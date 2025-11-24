@@ -30,33 +30,52 @@ fi
 
 PYTHON_VERSION=$(python3 --version)
 echo -e "${BLUE}Found:${NC} $PYTHON_VERSION"
+
+# Extract major.minor version (e.g., "3.10" from "Python 3.10.12")
+PYTHON_VER=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+echo -e "${BLUE}Python version:${NC} $PYTHON_VER"
 echo ""
 
 # Check if python3-venv is available (needed on Debian/Ubuntu/Armbian)
 echo "Checking for python3-venv package..."
-if ! python3 -m venv --help &>/dev/null; then
+if ! python3 -m venv --help &>/dev/null 2>&1; then
     echo -e "${YELLOW}WARNING: python3-venv module not available${NC}"
     echo ""
-    echo "On Armbian/Debian/Ubuntu systems, you need to install python3-venv:"
-    echo -e "  ${BLUE}sudo apt-get update${NC}"
-    echo -e "  ${BLUE}sudo apt-get install -y python3-venv${NC}"
+    echo "On Armbian/Debian/Ubuntu systems, you need to install the version-specific venv package:"
+    echo -e "  ${BLUE}sudo apt install -y python${PYTHON_VER}-venv${NC}"
     echo ""
-    read -p "Do you want to install python3-venv now? (requires sudo) (y/N): " -n 1 -r
+    read -p "Do you want to install python${PYTHON_VER}-venv now? (requires sudo) (y/N): " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo "Installing python3-venv..."
-        sudo apt-get update
-        sudo apt-get install -y python3-venv
+        echo "Installing python${PYTHON_VER}-venv..."
+
+        # Try version-specific package first (e.g., python3.10-venv)
+        sudo apt install -y python${PYTHON_VER}-venv
 
         if [ $? -ne 0 ]; then
+            echo -e "${YELLOW}Version-specific package failed, trying python3-venv...${NC}"
+            sudo apt install -y python3-venv
+        fi
+
+        # Verify installation
+        if ! python3 -m venv --help &>/dev/null 2>&1; then
             echo -e "${RED}ERROR: Failed to install python3-venv${NC}"
-            echo "Please install it manually and run this script again."
+            echo ""
+            echo "Please install it manually:"
+            echo "  sudo apt update"
+            echo "  sudo apt install -y python${PYTHON_VER}-venv"
+            echo ""
+            echo "Then run this script again."
             exit 1
         fi
+
         echo -e "${GREEN}✓${NC} python3-venv installed successfully"
         echo ""
     else
-        echo "Please install python3-venv manually and run this script again."
+        echo ""
+        echo "Please install python3-venv manually and run this script again:"
+        echo "  sudo apt update"
+        echo "  sudo apt install -y python${PYTHON_VER}-venv"
         exit 1
     fi
 else
