@@ -72,13 +72,40 @@ echo ""
 # Make scripts executable
 chmod +x capture_hourly.py aggregate_daily.py aggregate_weekly.py
 
-# Find python3 path
-PYTHON_PATH=$(which python3)
-if [ -z "$PYTHON_PATH" ]; then
-    echo -e "${RED}ERROR: python3 not found in PATH${NC}"
-    exit 1
+# Check for venv and use it if available, otherwise use system python3
+if [ -d "venv" ] && [ -f "venv/bin/python3" ]; then
+    PYTHON_PATH="${SCRIPT_DIR}/venv/bin/python3"
+    echo -e "${GREEN}✓${NC} Found Python virtual environment"
+    echo "Using venv Python: $PYTHON_PATH"
+
+    # Verify DuckDB is installed in venv
+    if ! "$PYTHON_PATH" -c "import duckdb" 2>/dev/null; then
+        echo -e "${YELLOW}WARNING: DuckDB not found in virtual environment${NC}"
+        echo "Please install it with: source venv/bin/activate && pip install duckdb"
+        echo ""
+        read -p "Continue anyway? (y/N): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
+    fi
+else
+    # Fall back to system python3
+    PYTHON_PATH=$(which python3)
+    if [ -z "$PYTHON_PATH" ]; then
+        echo -e "${RED}ERROR: python3 not found in PATH${NC}"
+        exit 1
+    fi
+    echo -e "${YELLOW}WARNING: No virtual environment found${NC}"
+    echo "Using system Python: $PYTHON_PATH"
+    echo "It's recommended to set up a venv first. See SCHEDULED.md for instructions."
+    echo ""
+    read -p "Continue anyway? (y/N): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        exit 1
+    fi
 fi
-echo "Using Python: $PYTHON_PATH"
 echo ""
 
 # Generate cron entries

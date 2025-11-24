@@ -66,22 +66,23 @@ If the directory doesn't exist, create it:
 ssh littlebox "mkdir -p /mnt/usb3/tinkerboard/flights/{hourly,daily,weekly}"
 ```
 
-### 4. Verify Python and Dependencies
+### 4. Verify Python and System Dependencies
 
-On Tinkerboard, verify Python 3 and DuckDB are installed:
+On Tinkerboard, verify Python 3 is installed:
 
 ```bash
 python3 --version
-python3 -c "import duckdb; print(f'DuckDB version: {duckdb.__version__}')"
 ```
 
-Expected output should show Python 3.7+ and DuckDB installation.
+Expected output should show Python 3.7 or higher.
 
 Also verify rsync is installed:
 
 ```bash
 rsync --version
 ```
+
+**Note:** You do NOT need system-wide pip or DuckDB installed. We'll set up a Python virtual environment in the deployment steps.
 
 ## Deployment Steps
 
@@ -159,6 +160,88 @@ You should see:
 - `aggregate_weekly.py`
 - `setup_parquet_cron.sh`
 
+### Step 3a: Set Up Python Virtual Environment
+
+Since tinkerboard doesn't have pip installed globally, you'll need to create a virtual environment.
+
+**Option 1: Use the automated setup script (RECOMMENDED):**
+
+```bash
+./setup_venv.sh
+```
+
+This script will:
+- Create a Python virtual environment in `venv/`
+- Install pip, DuckDB, and Folium
+- Verify all installations
+
+**Expected output:**
+```
+=========================================
+Python Virtual Environment Setup
+=========================================
+
+Found: Python 3.9.2
+
+Creating virtual environment...
+✓ Virtual environment created
+
+Activating virtual environment...
+Upgrading pip...
+✓ pip upgraded
+
+Installing required packages...
+
+[1/2] Installing duckdb...
+Successfully installed duckdb-0.9.2
+
+[2/2] Installing folium (for visualization)...
+Successfully installed folium-0.15.0
+
+✓ All packages installed successfully
+
+Verifying installations...
+✓ DuckDB version: 0.9.2
+✓ Folium version: 0.15.0
+
+=========================================
+Setup Complete!
+=========================================
+```
+
+**Option 2: Manual setup:**
+
+If you prefer to set up the venv manually:
+
+```bash
+# Create virtual environment
+python3 -m venv venv
+
+# Activate it
+source venv/bin/activate
+
+# Install packages
+pip install --upgrade pip
+pip install duckdb folium
+
+# Verify
+python3 -c "import duckdb; print(f'DuckDB version: {duckdb.__version__}')"
+
+# Deactivate when done
+deactivate
+```
+
+**Troubleshooting venv creation:**
+
+If `python3 -m venv` fails with "ensurepip is not available", you need to install the venv package:
+
+```bash
+sudo apt-get update
+sudo apt-get install python3-venv
+```
+
+**Note:** You can deactivate the venv with `deactivate`, but you'll need to reactivate it whenever you want to run the scripts manually. The cron jobs will use the venv python path automatically.
+
 ### Step 4: Verify Backup Directory Access on littlebox
 
 From **tinkerboard**, create and verify the backup directory structure on littlebox:
@@ -172,10 +255,17 @@ You should see three subdirectories: `hourly/`, `daily/`, and `weekly/`.
 
 ### Step 5: Test Manual Capture (RECOMMENDED)
 
-Before setting up automation, test the hourly capture manually with rsync backup to littlebox:
+Before setting up automation, test the hourly capture manually with rsync backup to littlebox.
+
+**Make sure you're in the venv or use the venv python path:**
 
 ```bash
+# Option 1: Activate venv first
+source venv/bin/activate
 python3 capture_hourly.py --backup-dir littlebox:/mnt/usb3/tinkerboard/flights/hourly
+
+# Option 2: Use venv python directly (without activating)
+venv/bin/python3 capture_hourly.py --backup-dir littlebox:/mnt/usb3/tinkerboard/flights/hourly
 ```
 
 **Expected output:**
@@ -230,7 +320,8 @@ Testing SSH connection to littlebox...
 Checking backup directory on littlebox...
 ✓ Backup directory ready: littlebox:/mnt/usb3/tinkerboard/flights
 
-Using Python: /usr/bin/python3
+✓ Found Python virtual environment
+Using venv Python: /home/<user>/flight_to_duckdb/venv/bin/python3
 
 The following cron entries will be added:
 
@@ -240,15 +331,15 @@ The following cron entries will be added:
 
 # Hourly capture - runs at the top of every hour
 # Captures current flight data and backs up to littlebox via rsync
-0 * * * * cd /home/<user>/flight_to_duckdb && /usr/bin/python3 capture_hourly.py --backup-dir littlebox:/mnt/usb3/tinkerboard/flights/hourly >> parquet_hourly.log 2>&1
+0 * * * * cd /home/<user>/flight_to_duckdb && /home/<user>/flight_to_duckdb/venv/bin/python3 capture_hourly.py --backup-dir littlebox:/mnt/usb3/tinkerboard/flights/hourly >> parquet_hourly.log 2>&1
 
 # Daily aggregation - runs at 1:00 AM every day
 # Aggregates previous day's hourly files and backs up to littlebox via rsync
-0 1 * * * cd /home/<user>/flight_to_duckdb && /usr/bin/python3 aggregate_daily.py --backup-dir littlebox:/mnt/usb3/tinkerboard/flights/daily >> parquet_daily.log 2>&1
+0 1 * * * cd /home/<user>/flight_to_duckdb && /home/<user>/flight_to_duckdb/venv/bin/python3 aggregate_daily.py --backup-dir littlebox:/mnt/usb3/tinkerboard/flights/daily >> parquet_daily.log 2>&1
 
 # Weekly aggregation - runs at 2:00 AM every Monday
 # Aggregates previous week's daily files and backs up to littlebox via rsync
-0 2 * * 1 cd /home/<user>/flight_to_duckdb && /usr/bin/python3 aggregate_weekly.py --backup-dir littlebox:/mnt/usb3/tinkerboard/flights/weekly >> parquet_weekly.log 2>&1
+0 2 * * 1 cd /home/<user>/flight_to_duckdb && /home/<user>/flight_to_duckdb/venv/bin/python3 aggregate_weekly.py --backup-dir littlebox:/mnt/usb3/tinkerboard/flights/weekly >> parquet_weekly.log 2>&1
 
 WARNING: This will modify your crontab!
 
@@ -287,7 +378,7 @@ To remove all cron jobs:
   crontab -r
 
 Test the setup by running:
-  python3 capture_hourly.py --backup-dir littlebox:/mnt/usb3/tinkerboard/flights/hourly
+  venv/bin/python3 capture_hourly.py --backup-dir littlebox:/mnt/usb3/tinkerboard/flights/hourly
 
 Note: Files are backed up to littlebox via rsync over SSH
 ```

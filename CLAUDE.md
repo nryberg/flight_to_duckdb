@@ -6,6 +6,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ADS-B aircraft tracking data pipeline that converts dump1090-fa JSON snapshots into a DuckDB database for analysis and visualization. Data is synced from a remote receiver (`tinkerboard:/run/dump1090-fa/`) and processed into a queryable format with interactive map visualizations.
 
+## Prerequisites
+
+### Python Virtual Environment (Tinkerboard)
+
+If deploying to tinkerboard (which may not have system-wide pip), use a virtual environment:
+
+```bash
+# Quick setup (recommended)
+./setup_venv.sh
+
+# Or manual setup
+python3 -m venv venv
+source venv/bin/activate
+pip install duckdb folium
+```
+
+All commands below assume you're either:
+- In the activated venv: `source venv/bin/activate`
+- Or using venv python directly: `venv/bin/python3 script.py`
+
 ## Core Commands
 
 ### Data Pipeline
@@ -44,14 +64,17 @@ crontab -e  # Edit jobs
 
 ### Parquet Pipeline
 ```bash
-# Manual hourly capture
-python3 capture_hourly.py
+# Setup Python environment (first time only)
+./setup_venv.sh
+
+# Manual hourly capture (with backup to littlebox)
+venv/bin/python3 capture_hourly.py --backup-dir littlebox:/mnt/usb3/tinkerboard/flights/hourly
 
 # Manual daily aggregation (yesterday by default)
-python3 aggregate_daily.py [--date YYYY-MM-DD] [--delete-hourly]
+venv/bin/python3 aggregate_daily.py [--date YYYY-MM-DD] [--delete-hourly] [--backup-dir littlebox:...]
 
 # Manual weekly aggregation (last week by default)
-python3 aggregate_weekly.py [--end-date YYYY-MM-DD] [--delete-daily]
+venv/bin/python3 aggregate_weekly.py [--end-date YYYY-MM-DD] [--delete-daily] [--backup-dir littlebox:...]
 
 # Setup automated cron jobs for hourly/daily/weekly processing
 ./setup_parquet_cron.sh
