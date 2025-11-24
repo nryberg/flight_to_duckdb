@@ -47,23 +47,39 @@ if ! python3 -m venv --help &>/dev/null 2>&1; then
     read -p "Do you want to install python${PYTHON_VER}-venv now? (requires sudo) (y/N): " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo "Installing python${PYTHON_VER}-venv..."
+        echo "Updating package list..."
+        sudo apt update
+        echo ""
 
-        # Try version-specific package first (e.g., python3.10-venv)
-        sudo apt install -y python${PYTHON_VER}-venv
+        echo "Installing python${PYTHON_VER}-venv and dependencies..."
 
+        # Install venv, development headers, and build tools (needed for numpy compilation)
+        sudo apt install -y \
+            python${PYTHON_VER}-venv \
+            python${PYTHON_VER}-dev \
+            python${PYTHON_VER}-distutils \
+            build-essential \
+            2>/dev/null
+
+        # If version-specific failed, try generic
         if [ $? -ne 0 ]; then
-            echo -e "${YELLOW}Version-specific package failed, trying python3-venv...${NC}"
-            sudo apt install -y python3-venv
+            echo -e "${YELLOW}Version-specific packages not found, trying generic packages...${NC}"
+            sudo apt install -y python3-venv python3-dev python3-pip python3-distutils build-essential
         fi
 
-        # Verify installation
+        echo ""
+        echo "Verifying installation..."
+
+        # Verify installation by trying to import venv
         if ! python3 -m venv --help &>/dev/null 2>&1; then
-            echo -e "${RED}ERROR: Failed to install python3-venv${NC}"
+            echo -e "${RED}ERROR: venv module still not available after installation${NC}"
             echo ""
-            echo "Please install it manually:"
+            echo "Please try installing these packages manually:"
             echo "  sudo apt update"
-            echo "  sudo apt install -y python${PYTHON_VER}-venv"
+            echo "  sudo apt install -y python${PYTHON_VER}-venv python${PYTHON_VER}-dev python${PYTHON_VER}-distutils build-essential"
+            echo ""
+            echo "If that doesn't work, try:"
+            echo "  sudo apt install -y python3-full python3-dev build-essential"
             echo ""
             echo "Then run this script again."
             exit 1
