@@ -403,19 +403,52 @@ python3 query_parquet_example.py --level daily --multi --count 7
 
 If backup operations fail:
 
-1. **Check directory permissions:**
+1. **Check SSH connection to littlebox:**
    ```bash
-   ls -ld /mnt/usb3/tinkerboard/flights/
+   ssh littlebox "echo 'Connection test'"
    ```
 
-2. **Check disk space:**
+2. **Check directory permissions on littlebox:**
    ```bash
-   df -h /mnt/usb3/
+   ssh littlebox "ls -ld /mnt/usb3/tinkerboard/flights/"
    ```
 
-3. **Test write access:**
+3. **Check disk space on littlebox:**
    ```bash
-   touch /mnt/usb3/tinkerboard/flights/test.txt && rm /mnt/usb3/tinkerboard/flights/test.txt
+   ssh littlebox "df -h /mnt/usb3/"
+   ```
+
+4. **Test write access on littlebox:**
+   ```bash
+   ssh littlebox "touch /mnt/usb3/tinkerboard/flights/test.txt && rm /mnt/usb3/tinkerboard/flights/test.txt"
+   ```
+
+5. **Test rsync manually:**
+   ```bash
+   echo "test" > /tmp/test.txt
+   rsync -avz /tmp/test.txt littlebox:/mnt/usb3/tinkerboard/flights/
+   ssh littlebox "cat /mnt/usb3/tinkerboard/flights/test.txt"
+   ssh littlebox "rm /mnt/usb3/tinkerboard/flights/test.txt"
+   ```
+
+### SSH Key Issues
+
+If rsync fails with "Permission denied" or asks for a password:
+
+1. **Verify SSH keys are set up:**
+   ```bash
+   ssh -v littlebox 2>&1 | grep "Offering public key"
+   ```
+
+2. **Re-copy SSH keys if needed:**
+   ```bash
+   ssh-copy-id littlebox
+   ```
+
+3. **Check SSH agent:**
+   ```bash
+   eval $(ssh-agent)
+   ssh-add
    ```
 
 ### No Data Being Captured
@@ -436,15 +469,17 @@ If backup operations fail:
 Monitor disk space usage:
 
 ```bash
-# Check local disk space
+# Check local disk space on tinkerboard
 df -h .
 
-# Check USB drive space
-df -h /mnt/usb3/
-
-# Check size of parquet directories
+# Check size of local parquet directories
 du -sh parquet/*
-du -sh /mnt/usb3/tinkerboard/flights/*
+
+# Check USB drive space on littlebox
+ssh littlebox "df -h /mnt/usb3/"
+
+# Check size of backup directories on littlebox
+ssh littlebox "du -sh /mnt/usb3/tinkerboard/flights/*"
 ```
 
 **Parquet file size estimates:**
@@ -481,11 +516,17 @@ crontab -e
 
 ### Verify Backup Integrity
 
-Periodically verify that backup files are valid:
+Periodically verify that backup files on littlebox are valid:
 
 ```bash
-# Validate all daily backup files
-python3 validate_parquet.py --level daily --parquet-dir /mnt/usb3/tinkerboard/flights
+# First, rsync a daily backup file from littlebox to tinkerboard for validation
+rsync -avz littlebox:/mnt/usb3/tinkerboard/flights/daily/flights_daily_2025-11-23.parquet /tmp/
+
+# Validate the backup file
+python3 validate_parquet.py --file /tmp/flights_daily_2025-11-23.parquet
+
+# Or, if you want to validate files directly on littlebox, SSH in and run validation there
+ssh littlebox "cd /mnt/usb3/tinkerboard/flights && python3 ~/flight_to_duckdb/validate_parquet.py --level daily --parquet-dir ."
 ```
 
 ### Monitor Log File Growth
@@ -558,11 +599,18 @@ crontab crontab_backup_YYYYMMDD_HHMMSS.txt
 
 After completing this setup, your Tinkerboard will automatically:
 
-1. ✅ Capture flight data every hour to Parquet files
-2. ✅ Aggregate hourly data into daily files at 1 AM (with deduplication)
-3. ✅ Aggregate daily data into weekly files every Monday at 2 AM
-4. ✅ Back up all files to the USB drive at `/mnt/usb3/tinkerboard/flights/`
+1. ✅ Capture flight data every hour to Parquet files (locally)
+2. ✅ Rsync all files to littlebox at `littlebox:/mnt/usb3/tinkerboard/flights/`
+3. ✅ Aggregate hourly data into daily files at 1 AM (with deduplication and rsync backup)
+4. ✅ Aggregate daily data into weekly files every Monday at 2 AM (with rsync backup)
 5. ✅ Log all operations for monitoring and troubleshooting
+
+### Backup Strategy Summary
+
+- **Local storage**: tinkerboard stores files in `~/flight_to_duckdb/parquet/`
+- **Remote backup**: littlebox receives copies via rsync at `/mnt/usb3/tinkerboard/flights/`
+- **Transfer method**: rsync over SSH with compression (`-avz` flags)
+- **Reliability**: If rsync fails, a warning is logged but the local file is still saved
 
 No manual intervention required! 🎉
 
