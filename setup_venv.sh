@@ -53,18 +53,20 @@ if ! python3 -m venv --help &>/dev/null 2>&1; then
 
         echo "Installing python${PYTHON_VER}-venv and dependencies..."
 
-        # Install venv, development headers, and build tools (needed for numpy compilation)
+        # Install venv, development headers, and build tools (needed for compiling packages)
         sudo apt install -y \
             python${PYTHON_VER}-venv \
             python${PYTHON_VER}-dev \
             python${PYTHON_VER}-distutils \
             build-essential \
+            cmake \
+            git \
             2>/dev/null
 
         # If version-specific failed, try generic
         if [ $? -ne 0 ]; then
             echo -e "${YELLOW}Version-specific packages not found, trying generic packages...${NC}"
-            sudo apt install -y python3-venv python3-dev python3-pip python3-distutils build-essential
+            sudo apt install -y python3-venv python3-dev python3-pip python3-distutils build-essential cmake git
         fi
 
         echo ""
@@ -145,14 +147,34 @@ echo ""
 
 # Install required packages
 echo "Installing required packages..."
+echo "This may take several minutes as packages compile for ARM architecture..."
 echo ""
 
-echo -e "${BLUE}[1/2]${NC} Installing duckdb..."
-pip install duckdb
+echo -e "${BLUE}[1/2]${NC} Installing duckdb (this may take 5-10 minutes to compile)..."
+pip install duckdb --no-cache-dir
+
+if [ $? -ne 0 ]; then
+    echo -e "${RED}✗${NC} DuckDB installation failed"
+    echo ""
+    echo "DuckDB compilation requires significant resources. You may need to:"
+    echo "  1. Ensure you have at least 2GB of free RAM"
+    echo "  2. Add swap space if needed: sudo fallocate -l 2G /swapfile"
+    echo "  3. Install additional dependencies: sudo apt install -y cmake git build-essential"
+    echo ""
+    echo "Skipping DuckDB for now..."
+else
+    echo -e "${GREEN}✓${NC} DuckDB installed"
+fi
 
 echo ""
-echo -e "${BLUE}[2/2]${NC} Installing folium (for visualization)..."
-pip install folium
+echo -e "${BLUE}[2/2]${NC} Installing folium (for visualization - optional)..."
+pip install folium --no-cache-dir 2>/dev/null
+
+if [ $? -ne 0 ]; then
+    echo -e "${YELLOW}⚠${NC} Folium installation failed (optional, only needed for visualization)"
+else
+    echo -e "${GREEN}✓${NC} Folium installed"
+fi
 
 echo ""
 echo -e "${GREEN}✓${NC} All packages installed successfully"

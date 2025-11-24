@@ -4,27 +4,38 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ADS-B aircraft tracking data pipeline that converts dump1090-fa JSON snapshots into a DuckDB database for analysis and visualization. Data is synced from a remote receiver (`tinkerboard:/run/dump1090-fa/`) and processed into a queryable format with interactive map visualizations.
+ADS-B aircraft tracking data pipeline that converts dump1090-fa JSON snapshots into Parquet files for analysis and visualization.
+
+### Architecture (Distributed)
+
+- **Tinkerboard**: Runs dump1090-fa, syncs raw JSON to littlebox every 20 minutes
+- **Littlebox**: Processes JSON into Parquet files, stores on USB3 drive
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for complete system design.
+
+### Setup Guides
+
+- **Littlebox Setup**: [SETUP_LITTLEBOX.md](SETUP_LITTLEBOX.md) - Primary processing server
+- **Tinkerboard Setup**: [SCHEDULED.md](SCHEDULED.md) - Data collector (deprecated for processing)
+- **Architecture Details**: [ARCHITECTURE.md](ARCHITECTURE.md) - System overview
 
 ## Prerequisites
 
-### Python Virtual Environment (Tinkerboard)
+### Python Virtual Environment (Littlebox Only)
 
-If deploying to tinkerboard (which may not have system-wide pip), use a virtual environment:
+**Processing is done on littlebox**, not tinkerboard. Set up a virtual environment on littlebox:
 
 ```bash
-# Quick setup (recommended)
+# On littlebox
+cd /mnt/usb3/tinkerboard/flight_to_duckdb
 ./setup_venv.sh
-
-# Or manual setup
-python3 -m venv venv
-source venv/bin/activate
-pip install duckdb folium
 ```
 
-All commands below assume you're either:
+All commands below assume you're on **littlebox** and either:
 - In the activated venv: `source venv/bin/activate`
 - Or using venv python directly: `venv/bin/python3 script.py`
+
+**Tinkerboard** only needs rsync and SSH - no Python packages required.
 
 ## Core Commands
 
@@ -52,34 +63,46 @@ python3 visualize_flights.py [--min-observations N] [--output FILE]
 python3 visualize_flights_animated.py [--speed N] [--min-observations N] [--output FILE]
 ```
 
-### Automated Sync
+### Automated Sync (Tinkerboard → Littlebox)
 ```bash
-# View sync logs
-tail -f sync_flight_data.log
+# On tinkerboard: View sync logs
+tail -f ~/sync_raw.log
 
-# Manage cron job
+# On tinkerboard: Manage cron job
 crontab -l  # View current jobs
 crontab -e  # Edit jobs
+
+# On tinkerboard: Manual sync test
+./sync_raw_to_littlebox.sh
 ```
 
-### Parquet Pipeline
+### Parquet Pipeline (Littlebox)
 ```bash
-# Setup Python environment (first time only)
+# On littlebox: Setup Python environment (first time only)
+cd /mnt/usb3/tinkerboard/flight_to_duckdb
 ./setup_venv.sh
 
-# Manual hourly capture (with backup to littlebox)
-venv/bin/python3 capture_hourly.py --backup-dir littlebox:/mnt/usb3/tinkerboard/flights/hourly
+# On littlebox: Manual hourly capture
+venv/bin/python3 capture_hourly.py \
+    --raw-dir /mnt/usb3/tinkerboard/raw \
+    --output-dir /mnt/usb3/tinkerboard/flights/hourly
 
-# Manual daily aggregation (yesterday by default)
-venv/bin/python3 aggregate_daily.py [--date YYYY-MM-DD] [--delete-hourly] [--backup-dir littlebox:...]
+# On littlebox: Manual daily aggregation (yesterday by default)
+venv/bin/python3 aggregate_daily.py \
+    --hourly-dir /mnt/usb3/tinkerboard/flights/hourly \
+    --daily-dir /mnt/usb3/tinkerboard/flights/daily \
+    [--date YYYY-MM-DD] [--delete-hourly]
 
-# Manual weekly aggregation (last week by default)
-venv/bin/python3 aggregate_weekly.py [--end-date YYYY-MM-DD] [--delete-daily] [--backup-dir littlebox:...]
+# On littlebox: Manual weekly aggregation (last week by default)
+venv/bin/python3 aggregate_weekly.py \
+    --daily-dir /mnt/usb3/tinkerboard/flights/daily \
+    --weekly-dir /mnt/usb3/tinkerboard/flights/weekly \
+    [--end-date YYYY-MM-DD] [--delete-daily]
 
-# Setup automated cron jobs for hourly/daily/weekly processing
-./setup_parquet_cron.sh
+# On littlebox: Setup automated cron jobs
+./setup_cron_littlebox.sh
 
-# View parquet pipeline logs
+# On littlebox: View parquet pipeline logs
 tail -f parquet_hourly.log
 tail -f parquet_daily.log
 tail -f parquet_weekly.log
@@ -87,19 +110,23 @@ tail -f parquet_weekly.log
 
 ## Architecture
 
-### Data Flow
+### Data Flow (Distributed Processing)
 
-**DuckDB Pipeline** (existing):
-1. **dump1090-fa receiver** produces JSON snapshots every ~1 minute
-2. **rsync** copies data from remote receiver to `raw/` directory
-3. **load_to_duckdb.py** processes JSON files into structured database
-4. **Visualization scripts** query database and generate interactive maps
+**New Architecture** (recommended):
+1. **Tinkerboard** runs dump1090-fa, produces JSON snapshots in `/run/dump1090-fa/`
+2. **Tinkerboard** syncs JSON to littlebox every 20 minutes via `sync_raw_to_littlebox.sh`
+3. **Littlebox** receives data in `/mnt/usb3/tinkerboard/raw/`
+4. **Littlebox** runs Parquet pipeline:
+   - **Hourly**: `capture_hourly.py` (every hour) → `/mnt/usb3/tinkerboard/flights/hourly/`
+   - **Daily**: `aggregate_daily.py` (1 AM) → `/mnt/usb3/tinkerboard/flights/daily/`
+   - **Weekly**: `aggregate_weekly.py` (Mon 2 AM) → `/mnt/usb3/tinkerboard/flights/weekly/`
 
-**Parquet Pipeline** (new):
-1. **Hourly**: `capture_hourly.py` runs every hour, reads all JSON files from `raw/`, creates timestamped Parquet file
-2. **Daily**: `aggregate_daily.py` runs at 1 AM, concatenates previous day's hourly files, removes duplicates, creates daily Parquet
-3. **Weekly**: `aggregate_weekly.py` runs Monday at 2 AM, concatenates previous week's daily files, creates weekly Parquet
-4. Files organized in `parquet/hourly/`, `parquet/daily/`, `parquet/weekly/` directories
+**DuckDB Pipeline** (legacy):
+1. **rsync** copies data from tinkerboard to local `raw/` directory
+2. **load_to_duckdb.py** processes JSON files into `aircraft.duckdb`
+3. **Visualization scripts** query database and generate maps
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for diagrams and details.
 
 ### Database Schema
 
@@ -182,14 +209,26 @@ When querying for flight paths, always:
 - `sync_flight_data.sh` - Automated sync script (run by cron every 20 minutes)
 - `sync_flight_data.log` - Sync operation logs
 
-**Parquet Pipeline**:
-- `parquet/hourly/` - Hourly snapshot files (one per hour)
-- `parquet/daily/` - Daily aggregated files (one per day, deduplicated)
-- `parquet/weekly/` - Weekly aggregated files (one per week ending Sunday)
-- `capture_hourly.py` - Hourly capture script
-- `aggregate_daily.py` - Daily aggregation script (with deduplication)
-- `aggregate_weekly.py` - Weekly aggregation script
-- `setup_parquet_cron.sh` - Automated cron setup script
-- `parquet_hourly.log` - Hourly capture logs
-- `parquet_daily.log` - Daily aggregation logs
-- `parquet_weekly.log` - Weekly aggregation logs
+**Parquet Pipeline** (on littlebox):
+- **Raw data**: `/mnt/usb3/tinkerboard/raw/` - Synced from tinkerboard
+- **Parquet files**:
+  - `/mnt/usb3/tinkerboard/flights/hourly/` - Hourly snapshots (~10 MB each)
+  - `/mnt/usb3/tinkerboard/flights/daily/` - Daily aggregated (~200 MB each, deduplicated)
+  - `/mnt/usb3/tinkerboard/flights/weekly/` - Weekly aggregated (~1 GB each)
+- **Scripts** (in `/mnt/usb3/tinkerboard/flight_to_duckdb/`):
+  - `capture_hourly.py` - Hourly capture script
+  - `aggregate_daily.py` - Daily aggregation script (with deduplication)
+  - `aggregate_weekly.py` - Weekly aggregation script
+  - `setup_venv.sh` - Python virtual environment setup
+  - `setup_cron_littlebox.sh` - Automated cron setup
+  - `validate_parquet.py` - Data validation tool
+  - `query_parquet_example.py` - Query examples
+  - `visualize_parquet.py` - Map visualization from Parquet
+- **Logs**:
+  - `parquet_hourly.log` - Hourly capture logs
+  - `parquet_daily.log` - Daily aggregation logs
+  - `parquet_weekly.log` - Weekly aggregation logs
+
+**Sync Scripts** (on tinkerboard):
+- `sync_raw_to_littlebox.sh` - Syncs raw JSON to littlebox every 20 minutes
+- `sync_raw.log` - Sync operation logs
