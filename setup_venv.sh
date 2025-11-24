@@ -32,6 +32,38 @@ PYTHON_VERSION=$(python3 --version)
 echo -e "${BLUE}Found:${NC} $PYTHON_VERSION"
 echo ""
 
+# Check if python3-venv is available (needed on Debian/Ubuntu/Armbian)
+echo "Checking for python3-venv package..."
+if ! python3 -m venv --help &>/dev/null; then
+    echo -e "${YELLOW}WARNING: python3-venv module not available${NC}"
+    echo ""
+    echo "On Armbian/Debian/Ubuntu systems, you need to install python3-venv:"
+    echo -e "  ${BLUE}sudo apt-get update${NC}"
+    echo -e "  ${BLUE}sudo apt-get install -y python3-venv${NC}"
+    echo ""
+    read -p "Do you want to install python3-venv now? (requires sudo) (y/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        echo "Installing python3-venv..."
+        sudo apt-get update
+        sudo apt-get install -y python3-venv
+
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}ERROR: Failed to install python3-venv${NC}"
+            echo "Please install it manually and run this script again."
+            exit 1
+        fi
+        echo -e "${GREEN}✓${NC} python3-venv installed successfully"
+        echo ""
+    else
+        echo "Please install python3-venv manually and run this script again."
+        exit 1
+    fi
+else
+    echo -e "${GREEN}✓${NC} python3-venv is available"
+    echo ""
+fi
+
 # Check if venv already exists
 if [ -d "venv" ]; then
     echo -e "${YELLOW}Virtual environment already exists at:${NC} venv/"

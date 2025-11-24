@@ -76,6 +76,15 @@ python3 --version
 
 Expected output should show Python 3.7 or higher.
 
+**For Armbian/Debian/Ubuntu systems**, you'll need the `python3-venv` package to create virtual environments:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y python3-venv
+```
+
+**Note:** The `setup_venv.sh` script will check for this and offer to install it automatically if missing.
+
 Also verify rsync is installed:
 
 ```bash
@@ -233,12 +242,18 @@ deactivate
 
 **Troubleshooting venv creation:**
 
-If `python3 -m venv` fails with "ensurepip is not available", you need to install the venv package:
+If `python3 -m venv` fails with "ensurepip is not available", the `python3-venv` package is missing.
+
+The `setup_venv.sh` script will detect this and offer to install it for you automatically. Just answer "y" when prompted.
+
+Or install it manually:
 
 ```bash
 sudo apt-get update
-sudo apt-get install python3-venv
+sudo apt-get install -y python3-venv
 ```
+
+Then run `./setup_venv.sh` again.
 
 **Note:** You can deactivate the venv with `deactivate`, but you'll need to reactivate it whenever you want to run the scripts manually. The cron jobs will use the venv python path automatically.
 
