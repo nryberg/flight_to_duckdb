@@ -150,7 +150,7 @@ echo "Installing required packages..."
 echo "This may take several minutes as packages compile for ARM architecture..."
 echo ""
 
-echo -e "${BLUE}[1/3]${NC} Installing pandas..."
+echo -e "${BLUE}[1/5]${NC} Installing pandas..."
 pip install pandas --no-cache-dir
 
 if [ $? -ne 0 ]; then
@@ -160,7 +160,7 @@ else
 fi
 
 echo ""
-echo -e "${BLUE}[2/3]${NC} Installing duckdb (this may take 5-10 minutes to compile)..."
+echo -e "${BLUE}[2/5]${NC} Installing duckdb (this may take 5-10 minutes to compile)..."
 pip install duckdb --no-cache-dir
 
 if [ $? -ne 0 ]; then
@@ -177,7 +177,27 @@ else
 fi
 
 echo ""
-echo -e "${BLUE}[3/3]${NC} Installing folium (for visualization - optional)..."
+echo -e "${BLUE}[3/5]${NC} Installing minio (for object storage upload)..."
+pip install minio --no-cache-dir
+
+if [ $? -ne 0 ]; then
+    echo -e "${RED}✗${NC} minio installation failed"
+else
+    echo -e "${GREEN}✓${NC} minio installed"
+fi
+
+echo ""
+echo -e "${BLUE}[4/5]${NC} Installing python-dotenv (for .env file support)..."
+pip install python-dotenv --no-cache-dir
+
+if [ $? -ne 0 ]; then
+    echo -e "${RED}✗${NC} python-dotenv installation failed"
+else
+    echo -e "${GREEN}✓${NC} python-dotenv installed"
+fi
+
+echo ""
+echo -e "${BLUE}[5/5]${NC} Installing folium (for visualization - optional)..."
 pip install folium --no-cache-dir 2>/dev/null
 
 if [ $? -ne 0 ]; then
@@ -194,6 +214,8 @@ echo ""
 echo "Verifying installations..."
 PANDAS_VERSION=$(python3 -c "import pandas; print(pandas.__version__)" 2>/dev/null)
 DUCKDB_VERSION=$(python3 -c "import duckdb; print(duckdb.__version__)" 2>/dev/null)
+MINIO_VERSION=$(python3 -c "import minio; print(minio.__version__)" 2>/dev/null)
+DOTENV_VERSION=$(python3 -c "import dotenv; print(dotenv.__version__)" 2>/dev/null)
 FOLIUM_VERSION=$(python3 -c "import folium; print(folium.__version__)" 2>/dev/null)
 
 if [ -n "$PANDAS_VERSION" ]; then
@@ -206,6 +228,18 @@ if [ -n "$DUCKDB_VERSION" ]; then
     echo -e "${GREEN}✓${NC} DuckDB version: $DUCKDB_VERSION"
 else
     echo -e "${RED}✗${NC} DuckDB installation failed"
+fi
+
+if [ -n "$MINIO_VERSION" ]; then
+    echo -e "${GREEN}✓${NC} minio version: $MINIO_VERSION"
+else
+    echo -e "${RED}✗${NC} minio installation failed"
+fi
+
+if [ -n "$DOTENV_VERSION" ]; then
+    echo -e "${GREEN}✓${NC} python-dotenv version: $DOTENV_VERSION"
+else
+    echo -e "${RED}✗${NC} python-dotenv installation failed"
 fi
 
 if [ -n "$FOLIUM_VERSION" ]; then

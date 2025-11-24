@@ -481,7 +481,7 @@ The system runs automatically with no manual intervention required! 🎉
 
 ## Next Steps
 
+- **MinIO Upload** (Recommended): Set up automated upload of hourly files to MinIO object storage for off-site backup. See [MINIO_SETUP.md](MINIO_SETUP.md)
 - Set up disk space monitoring/alerts
 - Configure log rotation
-- Set up backup strategy for weekly files
 - Create data analysis notebooks using the Parquet data

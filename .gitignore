@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Environment variables (contains secrets)
+.env
+
+# Database files
+*.duckdb
+*.duckdb.wal
+
+# Data directories
+raw/
+parquet/
+
+# Log files
+*.log
+
+# Generated visualizations
+*.html
+!docs/*.html
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Backup files
+crontab_backup_*.txt

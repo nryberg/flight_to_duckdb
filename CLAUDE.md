@@ -99,6 +99,12 @@ venv/bin/python3 aggregate_weekly.py \
     --weekly-dir /mnt/usb3/tinkerboard/flights/weekly \
     [--end-date YYYY-MM-DD] [--delete-daily]
 
+# On littlebox: Upload to MinIO (optional, requires .env with credentials)
+venv/bin/python3 upload_to_minio.py \
+    --hourly-dir /mnt/usb3/tinkerboard/flights/hourly \
+    --bucket flight-parquet \
+    [--days-back N] [--delete-after-upload]
+
 # On littlebox: Setup automated cron jobs
 ./setup_cron_littlebox.sh
 
@@ -106,6 +112,7 @@ venv/bin/python3 aggregate_weekly.py \
 tail -f parquet_hourly.log
 tail -f parquet_daily.log
 tail -f parquet_weekly.log
+tail -f minio_upload.log
 ```
 
 ## Architecture
@@ -246,6 +253,18 @@ When querying for flight paths, always:
   - Syncs via rsync over SSH (passwordless authentication required)
 - `sync_raw.log` - Sync operation logs
 
+**MinIO Upload** (on littlebox, optional):
+- `upload_to_minio.py` - Uploads hourly Parquet files to MinIO object storage
+  - Reads credentials from `.env` file (not committed to git)
+  - Bucket name: `flight-parquet` (default, configurable)
+  - Stores files as `hourly/flights_hourly_YYYY-MM-DD_HH00.parquet`
+  - Skips files that already exist (idempotent)
+  - Optional `--delete-after-upload` to save local disk space
+- `.env` - MinIO credentials (MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY)
+- `.env.example` - Template for creating `.env` file
+- `minio_upload.log` - Upload operation logs
+- See [MINIO_SETUP.md](MINIO_SETUP.md) for complete setup
+
 ## Common Issues and Solutions
 
 ### DuckDB Parameter Mismatch Error
@@ -289,3 +308,36 @@ sudo apt install python3.10-venv python3.10-dev
 ```
 
 The `setup_venv.sh` script handles this automatically.
+
+### MinIO Connection Issues
+**Problem**: Cannot connect to MinIO server or authentication fails.
+
+**Solutions**:
+1. **Check network connectivity**:
+   ```bash
+   ping 100.107.134.23
+   curl http://100.107.134.23:9000
+   ```
+
+2. **Verify .env file exists and has correct credentials**:
+   ```bash
+   cat .env  # Check file exists and format is correct
+   ```
+
+3. **Test credentials manually**:
+   ```bash
+   # Install mc (MinIO Client)
+   mc alias set test http://100.107.134.23:9000 ACCESS_KEY SECRET_KEY
+   mc ls test/
+   ```
+
+4. **Check MinIO server is running**:
+   - Open MinIO console in browser: `http://100.107.134.23:9000`
+   - Verify credentials in MinIO admin console
+
+5. **Verify bucket exists**:
+   ```bash
+   mc ls test/flight-parquet
+   ```
+
+See [MINIO_SETUP.md](MINIO_SETUP.md) for detailed troubleshooting.

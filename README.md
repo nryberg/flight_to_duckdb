@@ -230,9 +230,15 @@ cd /mnt/usb3/tinkerboard/flight_to_duckdb
 This installs:
 - `pandas` - Required for DuckDB Parquet operations
 - `duckdb` - For Parquet file creation and queries
+- `minio` - For uploading to MinIO object storage (optional)
+- `python-dotenv` - For managing MinIO credentials (optional)
 - `folium` - For map visualization
 
 See [SETUP_LITTLEBOX.md](SETUP_LITTLEBOX.md) for complete setup instructions.
+
+### MinIO Upload (Optional)
+
+For off-site backup to MinIO object storage, see [MINIO_SETUP.md](MINIO_SETUP.md).
 
 ## Parquet Pipeline (Recommended)
 
@@ -247,6 +253,7 @@ The distributed Parquet pipeline provides automated data processing:
 - `capture_hourly.py` - Processes raw JSON into hourly Parquet files (runs every hour)
 - `aggregate_daily.py` - Aggregates hourly files into daily files with deduplication (runs at 1 AM)
 - `aggregate_weekly.py` - Aggregates daily files into weekly files (runs Monday at 2 AM)
+- `upload_to_minio.py` - Uploads hourly files to MinIO object storage (optional, runs daily at 2:30 AM)
 - `query_parquet_example.py` - Query examples for Parquet files
 - `validate_parquet.py` - Data validation tool
 - `visualize_parquet.py` - Map visualization from Parquet files
