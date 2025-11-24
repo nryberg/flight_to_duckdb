@@ -4,7 +4,18 @@ Convert dump1090-fa ADS-B aircraft tracking JSON data into a DuckDB database for
 
 ## Overview
 
-This project processes JSON files from a dump1090-fa ADS-B receiver (tracking aircraft via radio signals) and loads them into a DuckDB database for efficient querying and analysis.
+This project processes JSON files from a dump1090-fa ADS-B receiver (tracking aircraft via radio signals) into two formats:
+
+1. **DuckDB Database** - For SQL queries and analysis (legacy pipeline)
+2. **Parquet Files** - For efficient storage and distributed processing (recommended)
+
+### Architecture
+
+The system uses a **distributed processing model**:
+- **Tinkerboard**: Collects ADS-B data via dump1090-fa, syncs raw JSON to littlebox
+- **Littlebox**: Processes JSON into Parquet files, stores on USB3 drive
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for complete system design and [SETUP_LITTLEBOX.md](SETUP_LITTLEBOX.md) for setup instructions.
 
 ## Data Source
 
@@ -197,9 +208,74 @@ The dump1090-fa receiver produces:
 
 ## Requirements
 
+### DuckDB Pipeline
+
 ```bash
 pip install duckdb folium
 ```
 
 - `duckdb` - For database operations
 - `folium` - For map visualization
+
+### Parquet Pipeline (Recommended)
+
+Set up on **littlebox** using the provided setup script:
+
+```bash
+# On littlebox
+cd /mnt/usb3/tinkerboard/flight_to_duckdb
+./setup_venv.sh
+```
+
+This installs:
+- `pandas` - Required for DuckDB Parquet operations
+- `duckdb` - For Parquet file creation and queries
+- `folium` - For map visualization
+
+See [SETUP_LITTLEBOX.md](SETUP_LITTLEBOX.md) for complete setup instructions.
+
+## Parquet Pipeline (Recommended)
+
+The distributed Parquet pipeline provides automated data processing:
+
+### Components
+
+**On Tinkerboard** (Data Collection):
+- `sync_raw_to_littlebox.sh` - Syncs raw JSON to littlebox every 20 minutes
+
+**On Littlebox** (Data Processing):
+- `capture_hourly.py` - Processes raw JSON into hourly Parquet files (runs every hour)
+- `aggregate_daily.py` - Aggregates hourly files into daily files with deduplication (runs at 1 AM)
+- `aggregate_weekly.py` - Aggregates daily files into weekly files (runs Monday at 2 AM)
+- `query_parquet_example.py` - Query examples for Parquet files
+- `validate_parquet.py` - Data validation tool
+- `visualize_parquet.py` - Map visualization from Parquet files
+
+### Setup
+
+1. **Configure tinkerboard to sync data:**
+   ```bash
+   # On tinkerboard
+   ./sync_raw_to_littlebox.sh  # Test manually
+   # Then set up cron job (see SETUP_LITTLEBOX.md)
+   ```
+
+2. **Set up processing on littlebox:**
+   ```bash
+   # On littlebox
+   cd /mnt/usb3/tinkerboard/flight_to_duckdb
+   ./setup_venv.sh
+   ./setup_cron_littlebox.sh
+   ```
+
+3. **Monitor:**
+   ```bash
+   # On littlebox
+   tail -f parquet_hourly.log
+   tail -f parquet_daily.log
+   tail -f parquet_weekly.log
+   ```
+
+See [SETUP_LITTLEBOX.md](SETUP_LITTLEBOX.md) for detailed instructions and [ARCHITECTURE.md](ARCHITECTURE.md) for system design.
+
+## DuckDB Pipeline (Legacy)

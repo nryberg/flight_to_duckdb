@@ -173,6 +173,17 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for diagrams and details.
 
 ## Important Implementation Details
 
+### DuckDB and Pandas Integration
+- **Pandas Dependency**: `capture_hourly.py` requires pandas to convert observation lists to DataFrames
+- **DuckDB Requirement**: DuckDB's `register()` method requires pandas DataFrame, not plain Python lists
+- **Conversion Pattern**:
+  ```python
+  df = pd.DataFrame(all_observations)  # Convert list of dicts to DataFrame
+  con.register('observations_df', df)  # Register DataFrame with DuckDB
+  con.execute("CREATE TABLE observations AS SELECT * FROM observations_df")
+  ```
+- **Why Pandas**: DuckDB uses pandas DataFrames for efficient data interchange and type inference
+
 ### Data Type Handling
 - Altitude fields (`alt_baro`, `alt_geom`) stored as VARCHAR because they can be integer values OR the string "ground"
 - When querying altitudes for visualization, filter out "ground" and convert to int
@@ -231,4 +242,50 @@ When querying for flight paths, always:
 
 **Sync Scripts** (on tinkerboard):
 - `sync_raw_to_littlebox.sh` - Syncs raw JSON to littlebox every 20 minutes
+  - Uses IP address `100.107.134.23` instead of hostname for reliability
+  - Syncs via rsync over SSH (passwordless authentication required)
 - `sync_raw.log` - Sync operation logs
+
+## Common Issues and Solutions
+
+### DuckDB Parameter Mismatch Error
+**Error**: `Invalid Input Error: Parameter argument/count mismatch`
+
+**Cause**: Attempting to use parameter binding with lists when DuckDB expects DataFrames.
+
+**Solution**: Use pandas DataFrame with `con.register()`:
+```python
+import pandas as pd
+df = pd.DataFrame(all_observations)
+con.register('observations_df', df)
+con.execute("CREATE TABLE observations AS SELECT * FROM observations_df")
+```
+
+### Python Object Not Suitable for Replacement Scans
+**Error**: `Python Object "all_observations_view" of type "list" not suitable for replacement scans`
+
+**Cause**: DuckDB's `register()` method requires pandas DataFrame, not plain Python lists.
+
+**Solution**: Install pandas (`pip install pandas`) and convert list to DataFrame before registering.
+
+### ARM Compilation Issues (Tinkerboard)
+**Problem**: DuckDB or numpy fail to compile on Armbian/ARM devices due to resource constraints.
+
+**Solution**: Use distributed architecture - process data on littlebox (x86/x64) instead of tinkerboard (ARM). See [ARCHITECTURE.md](ARCHITECTURE.md).
+
+### Cannot Reach "littlebox" Hostname
+**Problem**: SSH/rsync can't resolve "littlebox" hostname.
+
+**Solution**: Use IP address `100.107.134.23` in `sync_raw_to_littlebox.sh` instead of hostname.
+
+### Missing python3-venv Package
+**Problem**: `python3 -m venv` fails with "ensurepip is not available".
+
+**Solution**: Install version-specific venv package:
+```bash
+# On Debian/Ubuntu/Armbian
+python3 --version  # Check version (e.g., 3.10)
+sudo apt install python3.10-venv python3.10-dev
+```
+
+The `setup_venv.sh` script handles this automatically.

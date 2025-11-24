@@ -1,5 +1,13 @@
 # Scheduled Parquet Pipeline Setup for Tinkerboard
 
+> **⚠️ DEPRECATED:** This guide describes the old architecture where processing happened on tinkerboard. Due to resource constraints on ARM devices (slow compilation, limited RAM), processing has been moved to littlebox.
+>
+> **➡️ For the current recommended setup, see [SETUP_LITTLEBOX.md](SETUP_LITTLEBOX.md)**
+>
+> This document is kept for reference only.
+
+---
+
 This guide provides step-by-step instructions for configuring the automated Parquet data pipeline on Tinkerboard.
 
 ## Overview
@@ -10,12 +18,18 @@ The Parquet pipeline automatically captures and aggregates flight data on the fo
 - **Daily Aggregation**: Every day at 1:00 AM (aggregates previous day's hourly files, removes duplicates)
 - **Weekly Aggregation**: Every Monday at 2:00 AM (aggregates previous week's daily files)
 
-### Backup Architecture
+### Backup Architecture (OUTDATED)
 
-All files are automatically backed up from **tinkerboard** to **littlebox** using rsync over SSH:
-- Files are created locally on tinkerboard in `~/flight_to_duckdb/parquet/`
-- After each operation, files are synced to `littlebox:/mnt/usb3/tinkerboard/flights/`
-- Rsync provides efficient, compressed transfers with automatic retry capability
+> **Note:** In the new architecture, processing happens on littlebox directly, so there's no need to rsync Parquet files. Only raw JSON data is synced from tinkerboard to littlebox.
+
+~~All files are automatically backed up from **tinkerboard** to **littlebox** using rsync over SSH:~~
+- ~~Files are created locally on tinkerboard in `~/flight_to_duckdb/parquet/`~~
+- ~~After each operation, files are synced to `littlebox:/mnt/usb3/tinkerboard/flights/`~~
+- ~~Rsync provides efficient, compressed transfers with automatic retry capability~~
+
+**Current Architecture:** See [ARCHITECTURE.md](ARCHITECTURE.md) for the distributed processing model where:
+- Tinkerboard syncs raw JSON to littlebox
+- Littlebox processes JSON into Parquet files locally (no second rsync needed)
 
 ## Prerequisites
 
