@@ -8,8 +8,9 @@
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR" || exit 1
 
-# Backup directory on the USB drive
-BACKUP_BASE="/mnt/usb3/tinkerboard/flights"
+# Backup directory on littlebox USB drive (accessed via rsync over SSH)
+BACKUP_HOST="littlebox"
+BACKUP_BASE="${BACKUP_HOST}:/mnt/usb3/tinkerboard/flights"
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -22,9 +23,9 @@ echo "Parquet Pipeline Cron Setup (Tinkerboard)"
 echo "========================================="
 echo ""
 echo "This script will set up automated cron jobs for:"
-echo "  1. Hourly capture  - Run every hour (with backup to $BACKUP_BASE/hourly)"
-echo "  2. Daily aggregation - Run daily at 1:00 AM (with backup to $BACKUP_BASE/daily)"
-echo "  3. Weekly aggregation - Run weekly on Monday at 2:00 AM (with backup to $BACKUP_BASE/weekly)"
+echo "  1. Hourly capture  - Run every hour (with rsync backup to $BACKUP_BASE/hourly)"
+echo "  2. Daily aggregation - Run daily at 1:00 AM (with rsync backup to $BACKUP_BASE/daily)"
+echo "  3. Weekly aggregation - Run weekly on Monday at 2:00 AM (with rsync backup to $BACKUP_BASE/weekly)"
 echo ""
 
 # Check if Python scripts exist
@@ -34,26 +35,37 @@ if [ ! -f "capture_hourly.py" ] || [ ! -f "aggregate_daily.py" ] || [ ! -f "aggr
     exit 1
 fi
 
-# Check if backup directory exists or can be created
-if [ ! -d "$BACKUP_BASE" ]; then
-    echo -e "${YELLOW}WARNING: Backup directory $BACKUP_BASE does not exist${NC}"
-    echo "Attempting to create it..."
-    if mkdir -p "$BACKUP_BASE"/{hourly,daily,weekly} 2>/dev/null; then
-        echo -e "${GREEN}✓${NC} Backup directory created"
-    else
-        echo -e "${RED}ERROR: Cannot create backup directory${NC}"
-        echo "Please ensure /mnt/usb3/tinkerboard/flights/ is accessible and writable"
-        echo ""
-        read -p "Continue anyway? (y/N): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            exit 1
-        fi
-    fi
+# Check SSH connection to littlebox
+echo "Testing SSH connection to $BACKUP_HOST..."
+if ssh -o ConnectTimeout=5 "$BACKUP_HOST" "echo 'Connection successful'" > /dev/null 2>&1; then
+    echo -e "${GREEN}✓${NC} SSH connection to $BACKUP_HOST successful"
 else
-    echo -e "${GREEN}✓${NC} Backup directory exists: $BACKUP_BASE"
-    # Create subdirectories
-    mkdir -p "$BACKUP_BASE"/{hourly,daily,weekly}
+    echo -e "${YELLOW}WARNING: Cannot connect to $BACKUP_HOST via SSH${NC}"
+    echo "Please ensure:"
+    echo "  1. littlebox is online and accessible"
+    echo "  2. SSH keys are configured for passwordless access"
+    echo "  3. You can run: ssh $BACKUP_HOST"
+    echo ""
+    read -p "Continue anyway? (y/N): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        exit 1
+    fi
+fi
+
+# Check if backup directory exists on littlebox and create if needed
+echo "Checking backup directory on $BACKUP_HOST..."
+if ssh "$BACKUP_HOST" "mkdir -p /mnt/usb3/tinkerboard/flights/{hourly,daily,weekly} 2>/dev/null && test -d /mnt/usb3/tinkerboard/flights"; then
+    echo -e "${GREEN}✓${NC} Backup directory ready: $BACKUP_BASE"
+else
+    echo -e "${YELLOW}WARNING: Could not verify/create backup directory on $BACKUP_HOST${NC}"
+    echo "Please ensure /mnt/usb3/tinkerboard/flights/ exists on $BACKUP_HOST"
+    echo ""
+    read -p "Continue anyway? (y/N): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        exit 1
+    fi
 fi
 echo ""
 
@@ -145,6 +157,8 @@ if [ $? -eq 0 ]; then
     echo ""
     echo -e "${GREEN}Test the setup by running:${NC}"
     echo "  python3 capture_hourly.py --backup-dir $BACKUP_BASE/hourly"
+    echo ""
+    echo -e "${GREEN}Note:${NC} Files are backed up to $BACKUP_HOST via rsync over SSH"
 else
     echo -e "${RED}ERROR: Failed to add cron jobs${NC}"
     exit 1

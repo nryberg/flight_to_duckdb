@@ -10,6 +10,7 @@ from pathlib import Path
 from datetime import datetime
 import sys
 import shutil
+import subprocess
 
 
 def process_aircraft_file(file_path: Path) -> list:
@@ -157,13 +158,34 @@ def capture_hourly_snapshot(raw_dir: str = 'raw', output_dir: str = 'parquet/hou
 
     # Copy to backup directory if specified
     if backup_dir:
-        backup_path = Path(backup_dir)
-        backup_path.mkdir(parents=True, exist_ok=True)
-        backup_file = backup_path / filename
+        # Check if backup_dir is a remote path (contains ':')
+        if ':' in backup_dir:
+            # Remote backup using rsync
+            remote_file = f"{backup_dir}/{filename}"
+            print(f"\nRsyncing to remote backup: {remote_file}")
 
-        print(f"\nCopying to backup location: {backup_file}")
-        shutil.copy2(output_file, backup_file)
-        print(f"✓ Backup copy completed")
+            try:
+                # Use rsync with compression and progress
+                result = subprocess.run(
+                    ['rsync', '-avz', '--progress', str(output_file), remote_file],
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                print(f"✓ Remote backup completed via rsync")
+            except subprocess.CalledProcessError as e:
+                print(f"WARNING: Backup failed: {e.stderr}", file=sys.stderr)
+            except FileNotFoundError:
+                print(f"WARNING: rsync not found. Skipping remote backup.", file=sys.stderr)
+        else:
+            # Local backup using shutil
+            backup_path = Path(backup_dir)
+            backup_path.mkdir(parents=True, exist_ok=True)
+            backup_file = backup_path / filename
+
+            print(f"\nCopying to backup location: {backup_file}")
+            shutil.copy2(output_file, backup_file)
+            print(f"✓ Backup copy completed")
 
 
 def main():
@@ -174,7 +196,7 @@ def main():
         description='Capture hourly flight data snapshots to Parquet files'
     )
     parser.add_argument('--backup-dir', type=str,
-                       help='Backup directory to copy files to (e.g., /mnt/usb3/tinkerboard/flights/hourly)')
+                       help='Backup directory - local path or remote (e.g., littlebox:/mnt/usb3/tinkerboard/flights/hourly)')
     parser.add_argument('--raw-dir', default='raw',
                        help='Directory containing raw JSON files (default: raw)')
     parser.add_argument('--output-dir', default='parquet/hourly',

@@ -10,7 +10,12 @@ The Parquet pipeline automatically captures and aggregates flight data on the fo
 - **Daily Aggregation**: Every day at 1:00 AM (aggregates previous day's hourly files, removes duplicates)
 - **Weekly Aggregation**: Every Monday at 2:00 AM (aggregates previous week's daily files)
 
-All files are automatically backed up to `/mnt/usb3/tinkerboard/flights/` on the USB drive.
+### Backup Architecture
+
+All files are automatically backed up from **tinkerboard** to **littlebox** using rsync over SSH:
+- Files are created locally on tinkerboard in `~/flight_to_duckdb/parquet/`
+- After each operation, files are synced to `littlebox:/mnt/usb3/tinkerboard/flights/`
+- Rsync provides efficient, compressed transfers with automatic retry capability
 
 ## Prerequisites
 
@@ -24,17 +29,44 @@ ssh tinkerboard
 
 If this fails, you may need to configure SSH keys or update your SSH config.
 
-### 2. Verify USB Drive Mount
+### 2. Verify SSH Access to littlebox
 
-On Tinkerboard, check that the USB backup drive is mounted:
+From **tinkerboard**, verify SSH access to littlebox:
 
 ```bash
-ls -la /mnt/usb3/tinkerboard/
+ssh littlebox
 ```
 
-If the directory doesn't exist or isn't writable, contact your system administrator.
+You should be able to connect without entering a password (SSH keys should be configured).
 
-### 3. Verify Python and Dependencies
+If SSH keys aren't set up yet:
+
+```bash
+# On tinkerboard, generate SSH key if you don't have one
+ssh-keygen -t ed25519 -C "tinkerboard-to-littlebox"
+
+# Copy your public key to littlebox
+ssh-copy-id littlebox
+
+# Test passwordless login
+ssh littlebox "echo 'Connection successful'"
+```
+
+### 3. Verify Backup Directory on littlebox
+
+From **tinkerboard**, check that the backup directory exists on littlebox:
+
+```bash
+ssh littlebox "ls -la /mnt/usb3/tinkerboard/"
+```
+
+If the directory doesn't exist, create it:
+
+```bash
+ssh littlebox "mkdir -p /mnt/usb3/tinkerboard/flights/{hourly,daily,weekly}"
+```
+
+### 4. Verify Python and Dependencies
 
 On Tinkerboard, verify Python 3 and DuckDB are installed:
 
@@ -44,6 +76,12 @@ python3 -c "import duckdb; print(f'DuckDB version: {duckdb.__version__}')"
 ```
 
 Expected output should show Python 3.7+ and DuckDB installation.
+
+Also verify rsync is installed:
+
+```bash
+rsync --version
+```
 
 ## Deployment Steps
 
@@ -121,23 +159,23 @@ You should see:
 - `aggregate_weekly.py`
 - `setup_parquet_cron.sh`
 
-### Step 4: Verify Backup Directory Access
+### Step 4: Verify Backup Directory Access on littlebox
 
-Create and verify the backup directory structure:
+From **tinkerboard**, create and verify the backup directory structure on littlebox:
 
 ```bash
-mkdir -p /mnt/usb3/tinkerboard/flights/{hourly,daily,weekly}
-ls -la /mnt/usb3/tinkerboard/flights/
+ssh littlebox "mkdir -p /mnt/usb3/tinkerboard/flights/{hourly,daily,weekly}"
+ssh littlebox "ls -la /mnt/usb3/tinkerboard/flights/"
 ```
 
 You should see three subdirectories: `hourly/`, `daily/`, and `weekly/`.
 
 ### Step 5: Test Manual Capture (RECOMMENDED)
 
-Before setting up automation, test the hourly capture manually:
+Before setting up automation, test the hourly capture manually with rsync backup to littlebox:
 
 ```bash
-python3 capture_hourly.py --backup-dir /mnt/usb3/tinkerboard/flights/hourly
+python3 capture_hourly.py --backup-dir littlebox:/mnt/usb3/tinkerboard/flights/hourly
 ```
 
 **Expected output:**
@@ -153,8 +191,11 @@ Total observations collected: 15432
   - Unique aircraft: 127
   - Time range: 2025-11-23 17:00:32 to 2025-11-23 19:00:15
 
-Copying to backup location: /mnt/usb3/tinkerboard/flights/hourly/flights_hourly_2025-11-23_1900.parquet
-✓ Backup copy completed
+Rsyncing to remote backup: littlebox:/mnt/usb3/tinkerboard/flights/hourly/flights_hourly_2025-11-23_1900.parquet
+sending incremental file list
+flights_hourly_2025-11-23_1900.parquet
+          5,234,567 100%  512.34MB/s    0:00:00 (xfr#1, to-chk=0/1)
+✓ Remote backup completed via rsync
 ```
 
 If this succeeds, you're ready to set up automation!
@@ -180,11 +221,14 @@ Parquet Pipeline Cron Setup (Tinkerboard)
 =========================================
 
 This script will set up automated cron jobs for:
-  1. Hourly capture  - Run every hour (with backup to /mnt/usb3/tinkerboard/flights/hourly)
-  2. Daily aggregation - Run daily at 1:00 AM (with backup to /mnt/usb3/tinkerboard/flights/daily)
-  3. Weekly aggregation - Run weekly on Monday at 2:00 AM (with backup to /mnt/usb3/tinkerboard/flights/weekly)
+  1. Hourly capture  - Run every hour (with rsync backup to littlebox:/mnt/usb3/tinkerboard/flights/hourly)
+  2. Daily aggregation - Run daily at 1:00 AM (with rsync backup to littlebox:/mnt/usb3/tinkerboard/flights/daily)
+  3. Weekly aggregation - Run weekly on Monday at 2:00 AM (with rsync backup to littlebox:/mnt/usb3/tinkerboard/flights/weekly)
 
-✓ Backup directory exists: /mnt/usb3/tinkerboard/flights
+Testing SSH connection to littlebox...
+✓ SSH connection to littlebox successful
+Checking backup directory on littlebox...
+✓ Backup directory ready: littlebox:/mnt/usb3/tinkerboard/flights
 
 Using Python: /usr/bin/python3
 
@@ -192,19 +236,19 @@ The following cron entries will be added:
 
 # Flight Data Parquet Pipeline (Tinkerboard)
 # Managed by setup_parquet_cron.sh
-# Backup location: /mnt/usb3/tinkerboard/flights
+# Backup location: littlebox:/mnt/usb3/tinkerboard/flights
 
 # Hourly capture - runs at the top of every hour
-# Captures current flight data and backs up to USB drive
-0 * * * * cd /home/<user>/flight_to_duckdb && /usr/bin/python3 capture_hourly.py --backup-dir /mnt/usb3/tinkerboard/flights/hourly >> parquet_hourly.log 2>&1
+# Captures current flight data and backs up to littlebox via rsync
+0 * * * * cd /home/<user>/flight_to_duckdb && /usr/bin/python3 capture_hourly.py --backup-dir littlebox:/mnt/usb3/tinkerboard/flights/hourly >> parquet_hourly.log 2>&1
 
 # Daily aggregation - runs at 1:00 AM every day
-# Aggregates previous day's hourly files and backs up to USB drive
-0 1 * * * cd /home/<user>/flight_to_duckdb && /usr/bin/python3 aggregate_daily.py --backup-dir /mnt/usb3/tinkerboard/flights/daily >> parquet_daily.log 2>&1
+# Aggregates previous day's hourly files and backs up to littlebox via rsync
+0 1 * * * cd /home/<user>/flight_to_duckdb && /usr/bin/python3 aggregate_daily.py --backup-dir littlebox:/mnt/usb3/tinkerboard/flights/daily >> parquet_daily.log 2>&1
 
 # Weekly aggregation - runs at 2:00 AM every Monday
-# Aggregates previous week's daily files and backs up to USB drive
-0 2 * * 1 cd /home/<user>/flight_to_duckdb && /usr/bin/python3 aggregate_weekly.py --backup-dir /mnt/usb3/tinkerboard/flights/weekly >> parquet_weekly.log 2>&1
+# Aggregates previous week's daily files and backs up to littlebox via rsync
+0 2 * * 1 cd /home/<user>/flight_to_duckdb && /usr/bin/python3 aggregate_weekly.py --backup-dir littlebox:/mnt/usb3/tinkerboard/flights/weekly >> parquet_weekly.log 2>&1
 
 WARNING: This will modify your crontab!
 
@@ -223,10 +267,10 @@ Schedule:
   - Daily aggregation:  Every day at 1:00 AM
   - Weekly aggregation: Every Monday at 2:00 AM
 
-Backup locations:
-  - Hourly:  /mnt/usb3/tinkerboard/flights/hourly/
-  - Daily:   /mnt/usb3/tinkerboard/flights/daily/
-  - Weekly:  /mnt/usb3/tinkerboard/flights/weekly/
+Backup locations (on littlebox):
+  - Hourly:  littlebox:/mnt/usb3/tinkerboard/flights/hourly/
+  - Daily:   littlebox:/mnt/usb3/tinkerboard/flights/daily/
+  - Weekly:  littlebox:/mnt/usb3/tinkerboard/flights/weekly/
 
 Logs will be written to:
   - parquet_hourly.log
@@ -243,7 +287,9 @@ To remove all cron jobs:
   crontab -r
 
 Test the setup by running:
-  python3 capture_hourly.py --backup-dir /mnt/usb3/tinkerboard/flights/hourly
+  python3 capture_hourly.py --backup-dir littlebox:/mnt/usb3/tinkerboard/flights/hourly
+
+Note: Files are backed up to littlebox via rsync over SSH
 ```
 
 ### Step 7: Verify Cron Installation
@@ -280,20 +326,29 @@ tail -20 parquet_weekly.log
 
 **Hourly files** (generated every hour):
 ```bash
+# Local files on tinkerboard
 ls -lh parquet/hourly/ | tail -10
-ls -lh /mnt/usb3/tinkerboard/flights/hourly/ | tail -10
+
+# Backup files on littlebox
+ssh littlebox "ls -lh /mnt/usb3/tinkerboard/flights/hourly/ | tail -10"
 ```
 
 **Daily files** (generated at 1 AM):
 ```bash
+# Local files on tinkerboard
 ls -lh parquet/daily/
-ls -lh /mnt/usb3/tinkerboard/flights/daily/
+
+# Backup files on littlebox
+ssh littlebox "ls -lh /mnt/usb3/tinkerboard/flights/daily/"
 ```
 
 **Weekly files** (generated Monday at 2 AM):
 ```bash
+# Local files on tinkerboard
 ls -lh parquet/weekly/
-ls -lh /mnt/usb3/tinkerboard/flights/weekly/
+
+# Backup files on littlebox
+ssh littlebox "ls -lh /mnt/usb3/tinkerboard/flights/weekly/"
 ```
 
 ### Verify File Contents

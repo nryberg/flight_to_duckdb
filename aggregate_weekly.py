@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 import sys
 import argparse
 import shutil
+import subprocess
 
 
 def get_week_boundaries(end_date: datetime):
@@ -133,13 +134,34 @@ def aggregate_weekly(end_date: datetime, daily_dir: str = 'parquet/daily',
 
     # Copy to backup directory if specified
     if backup_dir:
-        backup_path = Path(backup_dir)
-        backup_path.mkdir(parents=True, exist_ok=True)
-        backup_file = backup_path / output_file.name
+        # Check if backup_dir is a remote path (contains ':')
+        if ':' in backup_dir:
+            # Remote backup using rsync
+            remote_file = f"{backup_dir}/{output_file.name}"
+            print(f"\nRsyncing to remote backup: {remote_file}")
 
-        print(f"\nCopying to backup location: {backup_file}")
-        shutil.copy2(output_file, backup_file)
-        print(f"✓ Backup copy completed")
+            try:
+                # Use rsync with compression and progress
+                result = subprocess.run(
+                    ['rsync', '-avz', '--progress', str(output_file), remote_file],
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                print(f"✓ Remote backup completed via rsync")
+            except subprocess.CalledProcessError as e:
+                print(f"WARNING: Backup failed: {e.stderr}", file=sys.stderr)
+            except FileNotFoundError:
+                print(f"WARNING: rsync not found. Skipping remote backup.", file=sys.stderr)
+        else:
+            # Local backup using shutil
+            backup_path = Path(backup_dir)
+            backup_path.mkdir(parents=True, exist_ok=True)
+            backup_file = backup_path / output_file.name
+
+            print(f"\nCopying to backup location: {backup_file}")
+            shutil.copy2(output_file, backup_file)
+            print(f"✓ Backup copy completed")
 
     # Clean up daily files if requested
     if not keep_daily:
@@ -181,7 +203,7 @@ Note: Weeks are defined as 7 days ending on Sunday.
     parser.add_argument('--weekly-dir', default='parquet/weekly',
                        help='Directory for weekly files (default: parquet/weekly)')
     parser.add_argument('--backup-dir', type=str,
-                       help='Backup directory to copy files to (e.g., /mnt/usb3/tinkerboard/flights/weekly)')
+                       help='Backup directory - local path or remote (e.g., littlebox:/mnt/usb3/tinkerboard/flights/weekly)')
 
     args = parser.parse_args()
 
