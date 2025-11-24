@@ -150,7 +150,17 @@ echo "Installing required packages..."
 echo "This may take several minutes as packages compile for ARM architecture..."
 echo ""
 
-echo -e "${BLUE}[1/2]${NC} Installing duckdb (this may take 5-10 minutes to compile)..."
+echo -e "${BLUE}[1/3]${NC} Installing pandas..."
+pip install pandas --no-cache-dir
+
+if [ $? -ne 0 ]; then
+    echo -e "${RED}✗${NC} pandas installation failed"
+else
+    echo -e "${GREEN}✓${NC} pandas installed"
+fi
+
+echo ""
+echo -e "${BLUE}[2/3]${NC} Installing duckdb (this may take 5-10 minutes to compile)..."
 pip install duckdb --no-cache-dir
 
 if [ $? -ne 0 ]; then
@@ -167,7 +177,7 @@ else
 fi
 
 echo ""
-echo -e "${BLUE}[2/2]${NC} Installing folium (for visualization - optional)..."
+echo -e "${BLUE}[3/3]${NC} Installing folium (for visualization - optional)..."
 pip install folium --no-cache-dir 2>/dev/null
 
 if [ $? -ne 0 ]; then
@@ -182,8 +192,15 @@ echo ""
 
 # Verify installations
 echo "Verifying installations..."
+PANDAS_VERSION=$(python3 -c "import pandas; print(pandas.__version__)" 2>/dev/null)
 DUCKDB_VERSION=$(python3 -c "import duckdb; print(duckdb.__version__)" 2>/dev/null)
 FOLIUM_VERSION=$(python3 -c "import folium; print(folium.__version__)" 2>/dev/null)
+
+if [ -n "$PANDAS_VERSION" ]; then
+    echo -e "${GREEN}✓${NC} pandas version: $PANDAS_VERSION"
+else
+    echo -e "${RED}✗${NC} pandas installation failed"
+fi
 
 if [ -n "$DUCKDB_VERSION" ]; then
     echo -e "${GREEN}✓${NC} DuckDB version: $DUCKDB_VERSION"

@@ -6,6 +6,7 @@ Processes all aircraft observations from raw/ directory and saves to timestamped
 
 import json
 import duckdb
+import pandas as pd
 from pathlib import Path
 from datetime import datetime
 import sys
@@ -128,13 +129,17 @@ def capture_hourly_snapshot(raw_dir: str = 'raw', output_dir: str = 'parquet/hou
         print("WARNING: No observations found!")
         return
 
+    # Convert list of dicts to pandas DataFrame
+    df = pd.DataFrame(all_observations)
+
     # Use DuckDB to write Parquet file
     con = duckdb.connect(':memory:')
 
-    # Create temporary table from observations
-    con.execute("CREATE TABLE observations AS SELECT * FROM all_observations", {
-        'all_observations': all_observations
-    })
+    # Register the DataFrame as a view that DuckDB can query
+    con.register('observations_df', df)
+
+    # Create table from the registered DataFrame
+    con.execute("CREATE TABLE observations AS SELECT * FROM observations_df")
 
     # Write to Parquet
     con.execute(f"COPY observations TO '{output_file}' (FORMAT PARQUET)")
