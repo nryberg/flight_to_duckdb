@@ -89,7 +89,7 @@ def aggregate_weekly(end_date: datetime, daily_dir: str = 'parquet/daily',
     print(f"\nLoading {len(daily_files)} daily files...")
     con.execute(f"""
         CREATE TABLE weekly_data AS
-        SELECT * FROM read_parquet([{daily_files_str}])
+        SELECT * FROM read_parquet([{daily_files_str}], union_by_name=true)
     """)
 
     # Get statistics

@@ -39,3 +39,5 @@ Thumbs.db
 
 # Backup files
 crontab_backup_*.txt
+test_output/
+test_raw/

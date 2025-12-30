@@ -58,6 +58,7 @@ The flight data pipeline collects ADS-B aircraft tracking data and processes it 
 │  │ capture_hourly.py           │   │
 │  │ (runs every hour)           │   │
 │  │ Reads: raw/*.json           │   │
+│  │ Filters: lat/lon/gs/track   │   │
 │  │ Writes: parquet/hourly/     │   │
 │  └──────────┬──────────────────┘   │
 │             │                       │

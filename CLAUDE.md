@@ -100,10 +100,18 @@ venv/bin/python3 aggregate_weekly.py \
     [--end-date YYYY-MM-DD] [--delete-daily]
 
 # On littlebox: Upload to MinIO (optional, requires .env with credentials)
-venv/bin/python3 upload_to_minio.py \
-    --hourly-dir /mnt/usb3/tinkerboard/flights/hourly \
-    --bucket flight-parquet \
-    [--days-back N] [--delete-after-upload]
+# Upload hourly files (default)
+venv/bin/python3 upload_to_minio.py --level hourly [--days-back N] [--delete-after-upload]
+
+# Upload daily files
+venv/bin/python3 upload_to_minio.py --level daily [--days-back N] [--delete-after-upload]
+
+# Upload weekly files
+venv/bin/python3 upload_to_minio.py --level weekly [--days-back N] [--delete-after-upload]
+
+# On littlebox: Monitor pipeline health and data quality
+venv/bin/python3 monitor_parquet_pipeline.py \
+    [--hours-back N] [--days-back N] [--weeks-back N]
 
 # On littlebox: Setup automated cron jobs
 ./setup_cron_littlebox.sh
@@ -173,10 +181,12 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for diagrams and details.
 - Daily: `flights_daily_YYYY-MM-DD.parquet` (e.g., `flights_daily_2025-11-23.parquet`)
 - Weekly: `flights_weekly_ending_YYYY-MM-DD.parquet` (e.g., `flights_weekly_ending_2025-11-24.parquet` for week ending Sunday)
 
-**Parquet Deduplication**:
-- Daily aggregation uses `DISTINCT ON (hex, observation_epoch)` to remove duplicates
-- Weekly aggregation should have no duplicates if daily aggregation worked correctly
+**Parquet Data Quality**:
+- **Hourly capture filtering**: `capture_hourly.py` automatically filters out observations missing required fields (lat, lon, gs, track) to ensure only complete position/velocity data is saved
+- **Daily aggregation**: Uses `DISTINCT ON (hex, observation_epoch)` to remove duplicates and `union_by_name=true` to handle schema inconsistencies across hourly files
+- **Weekly aggregation**: Should have no duplicates if daily aggregation worked correctly, also uses `union_by_name=true` for schema consistency
 - Same composite key as DuckDB ensures consistency across pipelines
+- **Schema handling**: The `type` column can vary between VARCHAR and INTEGER across different files - `union_by_name=true` allows DuckDB to merge schemas correctly
 
 ## Important Implementation Details
 
@@ -235,8 +245,9 @@ When querying for flight paths, always:
   - `/mnt/usb3/tinkerboard/flights/weekly/` - Weekly aggregated (~1 GB each)
 - **Scripts** (in `/mnt/usb3/tinkerboard/flight_to_duckdb/`):
   - `capture_hourly.py` - Hourly capture script
-  - `aggregate_daily.py` - Daily aggregation script (with deduplication)
-  - `aggregate_weekly.py` - Weekly aggregation script
+  - `aggregate_daily.py` - Daily aggregation script (with deduplication and schema merging)
+  - `aggregate_weekly.py` - Weekly aggregation script (with schema merging)
+  - `monitor_parquet_pipeline.py` - Pipeline health monitoring and data quality checks
   - `setup_venv.sh` - Python virtual environment setup
   - `setup_cron_littlebox.sh` - Automated cron setup
   - `validate_parquet.py` - Data validation tool
@@ -254,18 +265,39 @@ When querying for flight paths, always:
 - `sync_raw.log` - Sync operation logs
 
 **MinIO Upload** (on littlebox, optional):
-- `upload_to_minio.py` - Uploads hourly Parquet files to MinIO object storage
+- `upload_to_minio.py` - Uploads Parquet files (hourly/daily/weekly) to MinIO object storage
+  - Supports `--level` flag: hourly, daily, or weekly
   - Reads credentials from `.env` file (not committed to git)
   - Bucket name: `flight-parquet` (default, configurable)
-  - Stores files as `hourly/flights_hourly_YYYY-MM-DD_HH00.parquet`
+  - Stores files in level-specific directories:
+    - `hourly/flights_hourly_YYYY-MM-DD_HH00.parquet`
+    - `daily/flights_daily_YYYY-MM-DD.parquet`
+    - `weekly/flights_weekly_ending_YYYY-MM-DD.parquet`
   - Skips files that already exist (idempotent)
   - Optional `--delete-after-upload` to save local disk space
 - `.env` - MinIO credentials (MINIO_ENDPOINT, MINIO_ACCESS_KEY, MINIO_SECRET_KEY)
 - `.env.example` - Template for creating `.env` file
-- `minio_upload.log` - Upload operation logs
+- `minio_upload_hourly.log` - Hourly upload logs
+- `minio_upload_daily.log` - Daily upload logs
+- `minio_upload_weekly.log` - Weekly upload logs
 - See [MINIO_SETUP.md](MINIO_SETUP.md) for complete setup
 
 ## Common Issues and Solutions
+
+### Parquet Schema Mismatch Error (FIXED in Dec 2025)
+**Error**: `Conversion Error: failed to cast column "type" from type VARCHAR to INTEGER`
+
+**Cause**: Different hourly parquet files have inconsistent schemas - some files have the `type` column as VARCHAR (e.g., 'adsr_icao') while others have it as INTEGER. This happens when reading multiple parquet files where the first file's schema differs from subsequent files.
+
+**Solution**: Use `union_by_name=true` parameter in DuckDB's `read_parquet()` function:
+```python
+con.execute(f"""
+    CREATE TABLE hourly_data AS
+    SELECT * FROM read_parquet([{hourly_files_str}], union_by_name=true)
+""")
+```
+
+This was fixed in `aggregate_daily.py` and `aggregate_weekly.py` on 2025-12-30. If you encounter this error in older files, they were created with the broken aggregation and should be regenerated.
 
 ### DuckDB Parameter Mismatch Error
 **Error**: `Invalid Input Error: Parameter argument/count mismatch`

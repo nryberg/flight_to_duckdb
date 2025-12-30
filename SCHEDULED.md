@@ -304,9 +304,11 @@ Timestamp: 2025-11-23 19:00:00
 Processing aircraft.json...
 Processing 120 history files...
 Total observations collected: 15432
+Filtered out 7821 observations missing lat/lon/gs/track
+Valid observations: 7611
 
 ✓ Hourly snapshot saved: parquet/hourly/flights_hourly_2025-11-23_1900.parquet
-  - Total records: 15432
+  - Total records: 7611
   - Unique aircraft: 127
   - Time range: 2025-11-23 17:00:32 to 2025-11-23 19:00:15
 
@@ -316,6 +318,8 @@ flights_hourly_2025-11-23_1900.parquet
           5,234,567 100%  512.34MB/s    0:00:00 (xfr#1, to-chk=0/1)
 ✓ Remote backup completed via rsync
 ```
+
+**Note**: The script automatically filters out observations missing lat, lon, gs, or track values to ensure only complete flight path data is saved.
 
 If this succeeds, you're ready to set up automation!
 

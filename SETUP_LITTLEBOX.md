@@ -158,12 +158,16 @@ Timestamp: 2025-11-23 19:00:00
 Processing aircraft.json...
 Processing 120 history files...
 Total observations collected: 15432
+Filtered out 7821 observations missing lat/lon/gs/track
+Valid observations: 7611
 
 ✓ Hourly snapshot saved: /mnt/usb3/tinkerboard/flights/hourly/flights_hourly_2025-11-23_1900.parquet
-  - Total records: 15432
+  - Total records: 7611
   - Unique aircraft: 127
   - Time range: 2025-11-23 17:00:32 to 2025-11-23 19:00:15
 ```
+
+**Note**: The script automatically filters out observations that don't have complete position and velocity data (lat, lon, gs, track). This ensures all Parquet files contain only usable flight path data.
 
 ### Step 5: Set Up Cron Jobs
 

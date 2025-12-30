@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Upload hourly Parquet files to MinIO object storage.
+Upload Parquet files (hourly/daily/weekly) to MinIO object storage.
 Reads credentials from .env file and uploads files to configured bucket.
 """
 
@@ -14,25 +14,31 @@ from minio import Minio
 from minio.error import S3Error
 
 
-def upload_hourly_files(hourly_dir: str, bucket_name: str, minio_endpoint: str,
-                        access_key: str, secret_key: str, days_back: int = 1,
-                        delete_after_upload: bool = False):
+def upload_parquet_files(parquet_dir: str, level: str, bucket_name: str,
+                        minio_endpoint: str, access_key: str, secret_key: str,
+                        days_back: int = 1, delete_after_upload: bool = False):
     """
-    Upload hourly Parquet files to MinIO.
+    Upload Parquet files to MinIO.
 
     Args:
-        hourly_dir: Directory containing hourly Parquet files
+        parquet_dir: Directory containing Parquet files
+        level: File level (hourly/daily/weekly)
         bucket_name: MinIO bucket name
         minio_endpoint: MinIO server endpoint (host:port)
         access_key: MinIO access key
         secret_key: MinIO secret key
-        days_back: Number of days back to upload (default: 1 = yesterday's files)
+        days_back: Number of days/weeks back to upload (default: 1)
         delete_after_upload: Delete local files after successful upload
     """
-    hourly_path = Path(hourly_dir)
+    parquet_path = Path(parquet_dir)
 
-    if not hourly_path.exists():
-        print(f"ERROR: Hourly directory not found: {hourly_dir}", file=sys.stderr)
+    if not parquet_path.exists():
+        print(f"ERROR: Parquet directory not found: {parquet_dir}", file=sys.stderr)
+        sys.exit(1)
+
+    # Validate level
+    if level not in ['hourly', 'daily', 'weekly']:
+        print(f"ERROR: Invalid level '{level}'. Must be hourly, daily, or weekly", file=sys.stderr)
         sys.exit(1)
 
     # Initialize MinIO client
@@ -66,28 +72,54 @@ def upload_hourly_files(hourly_dir: str, bucket_name: str, minio_endpoint: str,
         print(f"ERROR: Failed to check/create bucket: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Calculate date range for files to upload
-    end_date = datetime.now() - timedelta(days=1)  # Yesterday
-    start_date = end_date - timedelta(days=days_back - 1)
+    # Set up file pattern and date extraction based on level
+    if level == 'hourly':
+        pattern = "flights_hourly_*.parquet"
+        object_prefix = "hourly/"
+        # For hourly: upload files from yesterday
+        end_date = datetime.now() - timedelta(days=1)
+        start_date = end_date - timedelta(days=days_back - 1)
+    elif level == 'daily':
+        pattern = "flights_daily_*.parquet"
+        object_prefix = "daily/"
+        # For daily: upload files from yesterday
+        end_date = datetime.now() - timedelta(days=1)
+        start_date = end_date - timedelta(days=days_back - 1)
+    else:  # weekly
+        pattern = "flights_weekly_ending_*.parquet"
+        object_prefix = "weekly/"
+        # For weekly: upload files from last week
+        end_date = datetime.now() - timedelta(weeks=1)
+        start_date = end_date - timedelta(weeks=days_back - 1)
 
-    print(f"\nLooking for files from {start_date.date()} to {end_date.date()}...")
+    print(f"\nLooking for {level} files from {start_date.date()} to {end_date.date()}...")
 
     # Find files to upload
-    pattern = "flights_hourly_*.parquet"
-    all_files = sorted(hourly_path.glob(pattern))
+    all_files = sorted(parquet_path.glob(pattern))
 
     if not all_files:
-        print(f"No hourly files found matching pattern: {pattern}")
+        print(f"No {level} files found matching pattern: {pattern}")
         return
 
     # Filter files by date range
     files_to_upload = []
     for file_path in all_files:
-        # Extract date from filename: flights_hourly_YYYY-MM-DD_HH00.parquet
         try:
             filename = file_path.name
-            date_str = filename.split('_')[2]  # Gets YYYY-MM-DD
-            file_date = datetime.strptime(date_str, '%Y-%m-%d')
+
+            # Extract date based on file type
+            if level == 'hourly':
+                # flights_hourly_YYYY-MM-DD_HH00.parquet
+                date_str = filename.split('_')[2]  # Gets YYYY-MM-DD
+                file_date = datetime.strptime(date_str, '%Y-%m-%d')
+            elif level == 'daily':
+                # flights_daily_YYYY-MM-DD.parquet
+                date_str = filename.split('_')[2].replace('.parquet', '')  # Gets YYYY-MM-DD
+                file_date = datetime.strptime(date_str, '%Y-%m-%d')
+            else:  # weekly
+                # flights_weekly_ending_YYYY-MM-DD.parquet
+                date_str = filename.split('_')[3].replace('.parquet', '')  # Gets YYYY-MM-DD
+                file_date = datetime.strptime(date_str, '%Y-%m-%d')
 
             if start_date.date() <= file_date.date() <= end_date.date():
                 files_to_upload.append(file_path)
@@ -108,7 +140,7 @@ def upload_hourly_files(hourly_dir: str, bucket_name: str, minio_endpoint: str,
 
     for file_path in files_to_upload:
         filename = file_path.name
-        object_name = f"hourly/{filename}"  # Store in hourly/ prefix
+        object_name = f"{object_prefix}{filename}"  # Store with level prefix
 
         try:
             # Check if file already exists
@@ -170,20 +202,28 @@ def upload_hourly_files(hourly_dir: str, bucket_name: str, minio_endpoint: str,
 def main():
     """Main function."""
     parser = argparse.ArgumentParser(
-        description='Upload hourly Parquet files to MinIO object storage'
+        description='Upload Parquet files (hourly/daily/weekly) to MinIO object storage'
     )
-    parser.add_argument('--hourly-dir', default='/mnt/usb3/tinkerboard/flights/hourly',
-                       help='Directory containing hourly Parquet files')
+    parser.add_argument('--level', choices=['hourly', 'daily', 'weekly'], default='hourly',
+                       help='Type of files to upload (default: hourly)')
+    parser.add_argument('--parquet-dir',
+                       help='Directory containing Parquet files (auto-detected based on level if not specified)')
     parser.add_argument('--bucket', default='flight-parquet',
                        help='MinIO bucket name (default: flight-parquet)')
     parser.add_argument('--days-back', type=int, default=1,
-                       help='Number of days back to upload (default: 1)')
+                       help='Number of days/weeks back to upload (default: 1)')
     parser.add_argument('--delete-after-upload', action='store_true',
                        help='Delete local files after successful upload')
     parser.add_argument('--env-file', default='.env',
                        help='Path to .env file with MinIO credentials (default: .env)')
 
     args = parser.parse_args()
+
+    # Auto-detect parquet directory if not specified
+    if not args.parquet_dir:
+        base_dir = '/mnt/usb3/tinkerboard/flights'
+        args.parquet_dir = f"{base_dir}/{args.level}"
+        print(f"Auto-detected parquet directory: {args.parquet_dir}")
 
     # Load environment variables from .env file
     env_path = Path(args.env_file)
@@ -214,19 +254,21 @@ def main():
         sys.exit(1)
 
     print("="*50)
-    print("MinIO Hourly Parquet Upload")
+    print(f"MinIO {args.level.title()} Parquet Upload")
     print("="*50)
     print(f"MinIO endpoint: {minio_endpoint}")
     print(f"Bucket: {args.bucket}")
-    print(f"Hourly directory: {args.hourly_dir}")
-    print(f"Days back: {args.days_back}")
+    print(f"Level: {args.level}")
+    print(f"Parquet directory: {args.parquet_dir}")
+    print(f"Days/weeks back: {args.days_back}")
     print(f"Delete after upload: {args.delete_after_upload}")
     print("="*50)
     print()
 
     try:
-        upload_hourly_files(
-            args.hourly_dir,
+        upload_parquet_files(
+            args.parquet_dir,
+            args.level,
             args.bucket,
             minio_endpoint,
             access_key,

@@ -251,9 +251,15 @@ The distributed Parquet pipeline provides automated data processing:
 
 **On Littlebox** (Data Processing):
 - `capture_hourly.py` - Processes raw JSON into hourly Parquet files (runs every hour)
+  - Automatically filters out observations missing lat, lon, gs, or track values
+  - Ensures only complete position/velocity data is saved
 - `aggregate_daily.py` - Aggregates hourly files into daily files with deduplication (runs at 1 AM)
 - `aggregate_weekly.py` - Aggregates daily files into weekly files (runs Monday at 2 AM)
-- `upload_to_minio.py` - Uploads hourly files to MinIO object storage (optional, runs daily at 2:30 AM)
+- `upload_to_minio.py` - Uploads Parquet files to MinIO object storage (optional)
+  - Supports hourly, daily, and weekly uploads with `--level` flag
+  - Hourly uploads: Daily at 2:30 AM
+  - Daily uploads: Daily at 1:30 AM
+  - Weekly uploads: Monday at 2:30 AM
 - `query_parquet_example.py` - Query examples for Parquet files
 - `validate_parquet.py` - Data validation tool
 - `visualize_parquet.py` - Map visualization from Parquet files

@@ -1,16 +1,19 @@
 # MinIO Upload Setup
 
-This guide walks through setting up automated upload of hourly Parquet files to MinIO object storage.
+This guide walks through setting up automated upload of Parquet files (hourly/daily/weekly) to MinIO object storage.
 
 ## Overview
 
-The `upload_to_minio.py` script uploads hourly Parquet files to a MinIO server for:
+The `upload_to_minio.py` script uploads Parquet files to a MinIO server for:
 - Off-site backup
 - Long-term storage
 - Cloud access to flight data
 - Integration with analytics tools
 
-**Schedule**: Runs daily (recommended: after daily aggregation completes)
+**Supports three levels**:
+- **Hourly**: Uploads yesterday's hourly files (runs daily at 2:30 AM)
+- **Daily**: Uploads yesterday's daily file (runs daily at 1:30 AM)
+- **Weekly**: Uploads last week's weekly file (runs Monday at 2:30 AM)
 
 ## Prerequisites
 
@@ -103,36 +106,48 @@ Before setting up automation, test the upload manually:
 cd /mnt/usb3/tinkerboard/flight_to_duckdb
 
 # Upload yesterday's hourly files (default)
-venv/bin/python3 upload_to_minio.py
+venv/bin/python3 upload_to_minio.py --level hourly
 
-# Or specify custom options
+# Upload yesterday's daily file
+venv/bin/python3 upload_to_minio.py --level daily
+
+# Upload last week's weekly file
+venv/bin/python3 upload_to_minio.py --level weekly
+
+# Upload multiple days back
+venv/bin/python3 upload_to_minio.py --level hourly --days-back 7
+
+# Custom options
 venv/bin/python3 upload_to_minio.py \
-    --hourly-dir /mnt/usb3/tinkerboard/flights/hourly \
+    --level daily \
+    --parquet-dir /mnt/usb3/tinkerboard/flights/daily \
     --bucket flight-parquet \
     --days-back 1
 ```
 
-**Expected output:**
+**Expected output (hourly):**
 ```
+Auto-detected parquet directory: /mnt/usb3/tinkerboard/flights/hourly
 ==================================================
 MinIO Hourly Parquet Upload
 ==================================================
-MinIO endpoint: 100.107.134.23:9000
+MinIO endpoint: localhost:9199
 Bucket: flight-parquet
-Hourly directory: /mnt/usb3/tinkerboard/flights/hourly
-Days back: 1
+Level: hourly
+Parquet directory: /mnt/usb3/tinkerboard/flights/hourly
+Days/weeks back: 1
 Delete after upload: False
 ==================================================
 
-Connecting to MinIO at 100.107.134.23:9000 (secure=False)...
+Connecting to MinIO at localhost:9199 (secure=False)...
 ✓ Bucket 'flight-parquet' exists
 
-Looking for files from 2025-11-23 to 2025-11-23...
+Looking for hourly files from 2025-11-24 to 2025-11-24...
 Found 24 files to upload
-↑ Uploading flights_hourly_2025-11-23_0000.parquet (8.32 MB)... ✓
-↑ Uploading flights_hourly_2025-11-23_0100.parquet (7.89 MB)... ✓
+↑ Uploading flights_hourly_2025-11-24_0000.parquet (8.32 MB)... ✓
+↑ Uploading flights_hourly_2025-11-24_0100.parquet (7.89 MB)... ✓
 ...
-↑ Uploading flights_hourly_2025-11-23_2300.parquet (9.14 MB)... ✓
+↑ Uploading flights_hourly_2025-11-24_2300.parquet (9.14 MB)... ✓
 
 ==================================================
 Upload Summary:
@@ -142,33 +157,44 @@ Upload Summary:
 ==================================================
 ```
 
-### Step 4: Set Up Automated Cron Job
+### Step 4: Set Up Automated Cron Jobs
 
-Add a cron job to run the upload script daily:
+Add cron jobs to upload all three levels automatically:
 
 ```bash
 # Edit crontab
 crontab -e
 ```
 
-Add this line (runs at 2:30 AM, after daily aggregation at 1 AM):
+Add these lines:
 
 ```cron
-# Upload hourly Parquet files to MinIO - runs daily at 2:30 AM
-30 2 * * * cd /mnt/usb3/tinkerboard/flight_to_duckdb && venv/bin/python3 upload_to_minio.py >> minio_upload.log 2>&1
+# MinIO Uploads - upload Parquet files to object storage
+
+# Upload hourly files daily at 2:30 AM (after all hourly captures)
+30 2 * * * cd /mnt/usb3/tinkerboard/flight_to_duckdb && venv/bin/python3 upload_to_minio.py --level hourly >> minio_upload_hourly.log 2>&1
+
+# Upload daily file at 1:30 AM (after daily aggregation at 1 AM)
+30 1 * * * cd /mnt/usb3/tinkerboard/flight_to_duckdb && venv/bin/python3 upload_to_minio.py --level daily >> minio_upload_daily.log 2>&1
+
+# Upload weekly file on Mondays at 2:30 AM (after weekly aggregation at 2 AM)
+30 2 * * 1 cd /mnt/usb3/tinkerboard/flight_to_duckdb && venv/bin/python3 upload_to_minio.py --level weekly >> minio_upload_weekly.log 2>&1
 ```
 
-Or if you want to delete local hourly files after successful upload (to save disk space):
+**Optional**: Add `--delete-after-upload` flag to save disk space by removing local files after successful upload:
 
 ```cron
-# Upload hourly Parquet files to MinIO and delete local copies - runs daily at 2:30 AM
-30 2 * * * cd /mnt/usb3/tinkerboard/flight_to_duckdb && venv/bin/python3 upload_to_minio.py --delete-after-upload >> minio_upload.log 2>&1
+# Example: Delete hourly files after upload
+30 2 * * * cd /mnt/usb3/tinkerboard/flight_to_duckdb && venv/bin/python3 upload_to_minio.py --level hourly --delete-after-upload >> minio_upload_hourly.log 2>&1
 ```
 
-**Recommended Schedule**:
-- Daily aggregation: 1:00 AM
-- MinIO upload: 2:30 AM (after aggregation completes)
-- Weekly aggregation: Monday 2:00 AM
+**Complete Schedule**:
+- **Hourly capture**: Every hour (top of the hour)
+- **Daily aggregation**: 1:00 AM
+- **Daily MinIO upload**: 1:30 AM (30 min after daily aggregation)
+- **Weekly aggregation**: Monday 2:00 AM
+- **Hourly MinIO upload**: 2:30 AM (after all hourly files collected)
+- **Weekly MinIO upload**: Monday 2:30 AM (30 min after weekly aggregation)
 
 ### Step 5: Verify Cron Installation
 

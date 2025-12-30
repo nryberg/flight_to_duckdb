@@ -125,12 +125,26 @@ def capture_hourly_snapshot(raw_dir: str = 'raw', output_dir: str = 'parquet/hou
 
     print(f"Total observations collected: {len(all_observations)}")
 
-    if not all_observations:
-        print("WARNING: No observations found!")
+    # Filter out observations missing required position/velocity fields
+    filtered_observations = [
+        obs for obs in all_observations
+        if obs.get('lat') is not None
+        and obs.get('lon') is not None
+        and obs.get('gs') is not None
+        and obs.get('track') is not None
+    ]
+
+    filtered_count = len(all_observations) - len(filtered_observations)
+    if filtered_count > 0:
+        print(f"Filtered out {filtered_count} observations missing lat/lon/gs/track")
+    print(f"Valid observations: {len(filtered_observations)}")
+
+    if not filtered_observations:
+        print("WARNING: No valid observations found after filtering!")
         return
 
     # Convert list of dicts to pandas DataFrame
-    df = pd.DataFrame(all_observations)
+    df = pd.DataFrame(filtered_observations)
 
     # Use DuckDB to write Parquet file
     con = duckdb.connect(':memory:')

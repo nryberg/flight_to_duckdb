@@ -59,7 +59,7 @@ def aggregate_daily(date: datetime, hourly_dir: str = 'parquet/hourly',
     print(f"\nLoading {len(hourly_files)} hourly files...")
     con.execute(f"""
         CREATE TABLE hourly_data AS
-        SELECT * FROM read_parquet([{hourly_files_str}])
+        SELECT * FROM read_parquet([{hourly_files_str}], union_by_name=true)
     """)
 
     # Get stats before deduplication
