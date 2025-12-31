@@ -41,3 +41,4 @@ Thumbs.db
 crontab_backup_*.txt
 test_output/
 test_raw/
+airframes/basic-ac-db.json
