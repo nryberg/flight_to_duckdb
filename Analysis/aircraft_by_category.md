@@ -8,27 +8,27 @@
 
 | Platform | Engines | Power Type | Unique Aircraft | Total Observations | Percentage |
 |----------|---------|------------|-----------------|-------------------|------------|
-| Land Airplane | 2 | Jet | 2,780 | 165,276 | 84.4% |
-| Land Airplane | 1 | Piston | 312 | 19,636 | 10.0% |
-| Land Airplane | 4 | Jet | 123 | 2,967 | 1.5% |
-| Land Airplane | 2 | Turboprop | 52 | 2,907 | 1.5% |
-| Land Airplane | 1 | Turboprop | 53 | 1,879 | 1.0% |
-| Land Airplane | 2 | Piston | 29 | 1,414 | 0.7% |
-| Land Airplane | 1 | Jet | 12 | 951 | 0.5% |
-| Helicopter | 2 | Turboprop | 12 | 922 | 0.5% |
-| Land Airplane | 3 | Jet | 28 | 772 | 0.4% |
-| Helicopter | 1 | Turboprop | 10 | 649 | 0.3% |
-| Helicopter | 1 | Piston | 3 | 152 | 0.1% |
-| Amphibian | 1 | Piston | 1 | 46 | <0.1% |
+| Land Airplane | 2 | Jet | 2,780 | 165,276 | 84% |
+| Land Airplane | 1 | Piston | 312 | 19,636 | 10% |
+| Land Airplane | 4 | Jet | 123 | 2,967 | 2% |
+| Land Airplane | 2 | Turboprop | 52 | 2,907 | 1% |
+| Land Airplane | 1 | Turboprop | 53 | 1,879 | 1% |
+| Land Airplane | 2 | Piston | 29 | 1,414 | 1% |
+| Land Airplane | 1 | Jet | 12 | 951 | <1% |
+| Helicopter | 2 | Turboprop | 12 | 922 | <1% |
+| Land Airplane | 3 | Jet | 28 | 772 | <1% |
+| Helicopter | 1 | Turboprop | 10 | 649 | <1% |
+| Helicopter | 1 | Piston | 3 | 152 | <1% |
+| Amphibian | 1 | Piston | 1 | 46 | <1% |
 
 ## Aircraft Size Distribution (Land Aircraft)
 
 | Size Category | Unique Aircraft | Observations | Percentage |
 |---------------|-----------------|--------------|------------|
-| **Medium (2 engines)** | 2,861 | 169,597 | 86.61% |
-| **Small (1 engine)** | 377 | 22,466 | 11.47% |
-| **Large (4 engines)** | 124 | 2,983 | 1.52% |
-| **Large (3 engines)** | 28 | 772 | 0.39% |
+| **Medium (2 engines)** | 2,861 | 169,597 | 87% |
+| **Small (1 engine)** | 377 | 22,466 | 11% |
+| **Large (4 engines)** | 124 | 2,983 | 2% |
+| **Large (3 engines)** | 28 | 772 | <1% |
 
 ## Top Aircraft by Category
 
