@@ -88,8 +88,13 @@ def upload_parquet_files(parquet_dir: str, level: str, bucket_name: str,
     else:  # weekly
         pattern = "flights_weekly_ending_*.parquet"
         object_prefix = "weekly/"
-        # For weekly: upload files from last week
-        end_date = datetime.now() - timedelta(weeks=1)
+        # For weekly: find the most recent completed Sunday (last week's end date)
+        today = datetime.now()
+        days_since_sunday = (today.weekday() + 1) % 7
+        if days_since_sunday == 0:
+            end_date = today - timedelta(days=7)  # today is Sunday, use last Sunday
+        else:
+            end_date = today - timedelta(days=days_since_sunday)
         start_date = end_date - timedelta(weeks=days_back - 1)
 
     print(f"\nLooking for {level} files from {start_date.date()} to {end_date.date()}...")
